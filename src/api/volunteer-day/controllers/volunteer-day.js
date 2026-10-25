@@ -310,79 +310,9 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
     },
 
     getPublic: async ctx => {
-      let page = null;
-      let pageSize = null;
-
-      if (ctx.query.pagination) {
-        page = parseInt(ctx.query.pagination.page) || null;
-        pageSize = parseInt(ctx.query.pagination.pageSize) || null;
-      }
-      else if (ctx.query['pagination[page]']) {
-        page = parseInt(ctx.query['pagination[page]']) || null;
-        pageSize = parseInt(ctx.query['pagination[pageSize]']) || null;
-      }
-
-      // v5 keeps a draft row and a published row per document; raw db.query
-      // returns both, so restrict to the published row or events show twice.
-      const where = {
-        publishedAt: { $notNull: true },
-        accessibility: 'Public',
-        startDatetime: {
-          $gt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
-        },
-        $and: [VdayHelper.notTrue('canceled')]
-      };
-
-      const populate = ['hero_image', 'garden', 'garden.hero_image', 'garden.organization'];
-
-      let entries;
-      let paginationMeta = null;
-
-      if (page !== null && pageSize !== null) {
-        const offset = (page - 1) * pageSize;
-        const [results, total] = await Promise.all([
-          strapi.db.query('api::volunteer-day.volunteer-day').findMany({
-            where,
-            orderBy: { startDatetime: 'desc' },
-            populate,
-            offset,
-            limit: pageSize,
-          }),
-          strapi.db.query('api::volunteer-day.volunteer-day').count({ where }),
-        ]);
-        entries = results;
-        paginationMeta = {
-          page,
-          pageSize,
-          pageCount: Math.ceil(total / pageSize),
-          total,
-        };
-      } else {
-        entries = await strapi.db.query('api::volunteer-day.volunteer-day').findMany({
-          where,
-          orderBy: { startDatetime: 'desc' },
-          populate,
-        });
-      }
-
-      entries = entries.map(entry => {
-        const hasVolunteerDayHeroImage = entry.hero_image && entry.hero_image.id;
-        if (!hasVolunteerDayHeroImage && entry.garden && entry.garden.hero_image && entry.garden.hero_image.id) {
-          entry.hero_image = entry.garden.hero_image;
-        }
-        return entry;
-      });
-
-      if (page !== null && pageSize !== null) {
-        return {
-          data: entries,
-          meta: {
-            pagination: paginationMeta
-          }
-        };
-      }
-
-      return entries;
+      const { publicPagination } = require('../../../utils/public-input');
+      const pagination = publicPagination(ctx, 15, true);
+      ctx.body = await strapi.service('api::volunteer-day.public-feed').list(pagination);
     },
 
     getByGarden: async ctx => {
