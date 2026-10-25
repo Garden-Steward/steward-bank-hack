@@ -27,6 +27,7 @@ let gardenless;
 let completed;
 let nextWorkday;
 let media;
+let secondMedia;
 let token;
 const now = Date.now();
 
@@ -39,12 +40,13 @@ beforeAll(async () => {
   user = await strapi.db.query('plugin::users-permissions.user').create({ data: { username: 'private-volunteer', email: 'private-volunteer@example.test', phoneNumber: '+14155550123', firstName: SENTINEL, lastName: SENTINEL, role: role.id, confirmed: true, provider: 'local' } });
   token = strapi.plugin('users-permissions').service('jwt').issue({ id: user.id });
   media = await strapi.db.query('plugin::upload.file').create({ data: { name: 'gallery.jpg', hash: 'gallery', mime: 'image/jpeg', size: 1, url: '/uploads/gallery.jpg', provider: 'local', provider_metadata: { private: SENTINEL } } });
+  secondMedia = await strapi.db.query('plugin::upload.file').create({ data: { name: 'gallery-second.jpg', hash: 'gallery-second', mime: 'image/jpeg', size: 1, url: '/uploads/gallery-second.jpg', provider: 'local' } });
   garden = await strapi.documents(GARDEN).create({ status: 'published', data: { title: 'Published garden', slug: 'published-garden', sms_slug: 'published-directory', welcome_text: SENTINEL, welcome_email_body: SENTINEL, boundary: { type: 'Polygon', coordinates: [[[-122.24, 37.81], [-122.23, 37.81], [-122.23, 37.82], [-122.24, 37.81]]] }, latitude: 37.812345, longitude: -122.234567, volunteers: [user.id], hero_image: media.id } });
   draftGarden = await strapi.documents(GARDEN).create({ data: { title: 'Hidden draft garden', slug: 'draft-garden', sms_slug: 'draft-directory' } });
   const noSlug = await strapi.documents(GARDEN).create({ status: 'published', data: { title: 'Hidden malformed slug', slug: 'valid-for-create', sms_slug: 'no-slug-directory' } });
   await strapi.db.query(GARDEN).updateMany({ where: { documentId: noSlug.documentId }, data: { slug: 'bad/slug' } });
   const base = { short_description: 'Public project description', review_status: 'APPROVED', submitter_email: 'private-submitter@example.test', verification_token: SENTINEL, review_note: SENTINEL, longitude: -122.234567, latitude: 37.812345 };
-  approved = await strapi.documents(PROJECT).create({ data: { ...base, title: 'Approved project', slug: 'approved-project', garden: garden.documentId, hero_image: media.id, featured_gallery: [media.id], interested: [user.id] } });
+  approved = await strapi.documents(PROJECT).create({ data: { ...base, title: 'Approved project', slug: 'approved-project', garden: garden.documentId, hero_image: media.id, featured_gallery: [secondMedia.id, media.id], interested: [user.id] } });
   gardenless = await strapi.documents(PROJECT).create({ data: { ...base, title: 'Gardenless project', slug: 'gardenless-project' } });
   completed = await strapi.documents(PROJECT).create({ data: { ...base, title: 'Completed project', slug: 'completed-project', garden: garden.documentId, review_status: 'COMPLETED' } });
   for (const status of ['CREATED', 'CHANGES_REQUESTED', 'REJECTED', 'ARCHIVED']) await strapi.documents(PROJECT).create({ data: { ...base, title: 'Hidden ' + status, slug: status.toLowerCase(), review_status: status } });
@@ -94,7 +96,7 @@ it('returns approved/completed projects, ordered real gallery, public context an
   expect(item.id).toBe(approved.id);
   expect(item.interested).toEqual([{ id: user.id }]);
   expect(item.garden.title).toBe('Published garden');
-  expect(item.featured_gallery.map(image => image.url)).toEqual(['/uploads/gallery.jpg']);
+  expect(item.featured_gallery.map(image => image.url)).toEqual(['/uploads/gallery-second.jpg', '/uploads/gallery.jpg']);
   expect(item.related_events).toEqual([{ id: nextWorkday.id, documentId: nextWorkday.documentId, startDatetime: nextWorkday.startDatetime }]);
   expect(JSON.stringify(res.body)).not.toMatch(/DIRECTORY_PRIVATE_SENTINEL|private-submitter@|private-volunteer@|14155550123/);
 });

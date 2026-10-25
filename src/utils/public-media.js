@@ -1,15 +1,16 @@
 'use strict';
 
 function publicUrl(value, editorial = false) {
-  if (typeof value !== 'string' || !value || /[\u0000-\u0020\u007f\\]/u.test(value)) return null;
-  if (value.startsWith('/') && !value.startsWith('//')) {
-    if (editorial || value.startsWith('/uploads/')) return value;
-    return null;
-  }
-  if (editorial && value.startsWith('#')) return value;
+  if (typeof value !== 'string' || !value || /[\u0000-\u0020\u007f\\]/u.test(value) || value.startsWith('//')) return null;
   try {
-    const url = new URL(value);
+    let url;
+    if (editorial || value.startsWith('/')) url = new URL(value, 'https://public.invalid');
+    else url = new URL(value);
     if (url.username || url.password) return null;
+    if (value.startsWith('/')) {
+      if (editorial || url.pathname.startsWith('/uploads/')) return value;
+      return null;
+    }
     if (url.protocol === 'http:' || url.protocol === 'https:') return value;
     if (editorial && (url.protocol === 'mailto:' || url.protocol === 'tel:')) return value;
   } catch {
