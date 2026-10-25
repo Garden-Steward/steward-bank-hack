@@ -1,0 +1,160 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_consent_receipts",
+  "info": {
+    "singularName": "consent-receipt",
+    "pluralName": "consent-receipts",
+    "displayName": "Consent Receipt"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "receiptId": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      }
+    },
+    "participationId": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "userId": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "scope": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "event_followup"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "eventDocumentId": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "action": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "grant",
+        "revoke"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "textVersion": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "textHash": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "destinationProofId": {
+      "type": "integer",
+      "private": true
+    },
+    "destinationKey": {
+      "type": "string",
+      "private": true
+    },
+    "stopEpoch": {
+      "type": "integer",
+      "private": true
+    },
+    "source": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "requestId": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "revokesReceiptId": {
+      "type": "string",
+      "private": true
+    },
+    "sequence": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    }
+  },
+  "indexes": [
+    {
+      "name": "gs_consent_request_unique",
+      "columns": [
+        "user_id",
+        "scope",
+        "event_document_id",
+        "request_id"
+      ],
+      "type": "unique"
+    },
+    {
+      "name": "gs_consent_sequence_unique",
+      "columns": [
+        "user_id",
+        "scope",
+        "event_document_id",
+        "sequence"
+      ],
+      "type": "unique"
+    }
+  ]
+}

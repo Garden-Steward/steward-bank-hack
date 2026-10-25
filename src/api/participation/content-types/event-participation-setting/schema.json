@@ -1,0 +1,161 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_event_participation_settings",
+  "info": {
+    "singularName": "event-participation-setting",
+    "pluralName": "event-participation-settings",
+    "displayName": "Event Participation Setting"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "eventDocumentId": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      }
+    },
+    "gardenDocumentId": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "version": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": 1
+    },
+    "opensAt": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "closesAt": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "enabled": {
+      "type": "boolean",
+      "private": true,
+      "default": false,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "paused": {
+      "type": "boolean",
+      "private": true,
+      "default": false,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "qrHash": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "column": {
+        "unique": true
+      }
+    },
+    "qrExpiry": {
+      "type": "datetime",
+      "private": true
+    },
+    "qrGeneration": {
+      "type": "integer",
+      "private": true,
+      "min": 0,
+      "default": 0,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "slot": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "sunday_1800",
+        "monday_0900"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": "sunday_1800"
+    },
+    "mode": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "sms_link",
+        "mms"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": "sms_link"
+    },
+    "approvedMediaId": {
+      "type": "integer",
+      "private": true
+    },
+    "approvedMediaVersion": {
+      "type": "string",
+      "private": true
+    },
+    "approvedMediaDigest": {
+      "type": "string",
+      "private": true
+    },
+    "rightsNote": {
+      "type": "text",
+      "private": true
+    },
+    "approvedBy": {
+      "type": "integer",
+      "private": true
+    },
+    "approvedAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "revokedAt": {
+      "type": "datetime",
+      "private": true
+    }
+  },
+  "indexes": []
+}

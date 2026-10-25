@@ -1,0 +1,86 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_verified_contacts",
+  "info": {
+    "singularName": "verified-contact",
+    "pluralName": "verified-contacts",
+    "displayName": "Verified Contact"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "channel": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "email",
+        "sms"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "derivationVersion": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": 1
+    },
+    "destinationKey": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "userId": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "verifiedAt": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "revokedAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "proofId": {
+      "type": "integer",
+      "private": true
+    }
+  },
+  "indexes": [
+    {
+      "name": "gs_verified_contact_actor_idx",
+      "columns": [
+        "user_id",
+        "channel"
+      ]
+    }
+  ]
+}

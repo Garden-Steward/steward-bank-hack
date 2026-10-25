@@ -1,0 +1,187 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_contact_proofs",
+  "info": {
+    "singularName": "contact-proof",
+    "pluralName": "contact-proofs",
+    "displayName": "Contact Proof"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "receiptId": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      }
+    },
+    "purpose": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "join_identity",
+        "email_login",
+        "profile_email",
+        "profile_phone"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "intentId": {
+      "type": "integer",
+      "private": true
+    },
+    "actorId": {
+      "type": "integer",
+      "private": true
+    },
+    "rawValue": {
+      "type": "text",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "deliveryValue": {
+      "type": "text",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "derivationVersion": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": 1
+    },
+    "destinationKey": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "browserSecretHash": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "generation": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": 1
+    },
+    "codeHmac": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "attempts": {
+      "type": "integer",
+      "private": true,
+      "min": 0,
+      "max": 5,
+      "default": 0,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "expiresAt": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "consumedAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "supersededAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "sendState": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "pending",
+        "queued",
+        "accepted",
+        "failed",
+        "unknown",
+        "simulated"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": "pending"
+    },
+    "sealedPayload": {
+      "type": "text",
+      "private": true
+    },
+    "attemptId": {
+      "type": "string",
+      "private": true
+    },
+    "providerId": {
+      "type": "string",
+      "private": true
+    }
+  },
+  "indexes": [
+    {
+      "name": "gs_contact_proof_budget_idx",
+      "columns": [
+        "destination_key",
+        "purpose",
+        "created_at"
+      ]
+    },
+    {
+      "name": "gs_contact_proof_expiry_idx",
+      "columns": [
+        "expires_at",
+        "consumed_at"
+      ]
+    }
+  ]
+}
