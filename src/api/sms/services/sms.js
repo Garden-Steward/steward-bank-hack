@@ -14,6 +14,7 @@ const mmsUnits = () => strapi.config.get('billing.MMS_UNITS', 3);
  * Metering failures are logged and swallowed; they never stop a text from going out.
  */
 const send = async function (options = {}) {
+  const hasDispatchGuard = Object.hasOwn(options, 'dispatchGuard');
   const { to, body, mediaUrl, garden, user, task, event, category, source, billable, throwOnError = false, beforeSend, dispatchGuard } = options;
   const transport = strapi.service('api::sms.transport');
   // 1. category + estimate
@@ -53,7 +54,7 @@ const send = async function (options = {}) {
   if (typeof beforeSend === 'function') {
     try { await beforeSend(); } catch (err) { log('error', `[sms] beforeSend failed source=${source || 'unknown'}: ${err && err.message}`); }
   }
-  if (Object.hasOwn(options, 'dispatchGuard')) {
+  if (hasDispatchGuard) {
     let permitted = false;
     try {
       if (typeof dispatchGuard === 'function') permitted = (await dispatchGuard()) === true;

@@ -59,3 +59,11 @@ test('authorization is checked after asynchronous bookkeeping changes eligibilit
   expect(transport.create).not.toHaveBeenCalled();
   expect(result.blocked).toBe(true);
 });
+
+test('mutating the shared options during bookkeeping cannot remove a supplied guard', async () => {
+  const options = { to: '+14155550100', body: 'Synthetic proof', category: 'system', source: 'identity.proof', dispatchGuard: async () => false };
+  options.beforeSend = async () => { delete options.dispatchGuard; };
+  const result = await sms.send(options);
+  expect(transport.create).not.toHaveBeenCalled();
+  expect(result.blocked).toBe(true);
+});
