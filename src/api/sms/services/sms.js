@@ -13,7 +13,8 @@ const mmsUnits = () => strapi.config.get('billing.MMS_UNITS', 3);
  * Order: normalize category -> resolve attribution -> gate -> beforeSend -> transport -> ledger row.
  * Metering failures are logged and swallowed; they never stop a text from going out.
  */
-const send = async function ({ to, body, mediaUrl, garden, user, task, event, category, source, billable, throwOnError = false, beforeSend } = {}) {
+const send = async function (options = {}) {
+  const { to, body, mediaUrl, garden, user, task, event, category, source, billable, throwOnError = false, beforeSend, dispatchGuard } = options;
   const transport = strapi.service('api::sms.transport');
   // 1. category + estimate
   let cat = category;
@@ -51,6 +52,19 @@ const send = async function ({ to, body, mediaUrl, garden, user, task, event, ca
   // 4. beforeSend
   if (typeof beforeSend === 'function') {
     try { await beforeSend(); } catch (err) { log('error', `[sms] beforeSend failed source=${source || 'unknown'}: ${err && err.message}`); }
+  }
+  if (Object.hasOwn(options, 'dispatchGuard')) {
+    let permitted = false;
+    try {
+      if (typeof dispatchGuard === 'function') permitted = (await dispatchGuard()) === true;
+    } catch {
+      log('error', `[sms] dispatch guard refused source=${source || 'unknown'}`);
+    }
+    if (!permitted) {
+      const simulated = transport.isDryRun();
+      await write({ ...base, segments, units, twilio_sid: null, billable: false, blocked: true, simulated });
+      return { ok: false, sid: null, segments, units, blocked: true, simulated, error: null };
+    }
   }
   // 5. network
   let msg;
