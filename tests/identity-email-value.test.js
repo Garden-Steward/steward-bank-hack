@@ -24,6 +24,6 @@ test('a320character raw value is preserved without truncating a valid delivery a
   expect(emailValue(rawValue)).toEqual({ rawValue, deliveryValue: delivery });
 });
 
-test.each([null, 123, '', 'a@example.com\n', 'a\r@example.com', 'a\0@example.com', 'a,b@example.com', 'a..b@example.com', '.a@example.com', 'a.@example.com', 'a@-example.com', 'a@example..com', 'a@localhost', 'a'.repeat(65) + '@example.com', ' '.repeat(321) + 'a@example.com'])('unsafe or unsupported email input is refused without coercion', rawValue => {
+test.each([null, 123, '', 'example.com', 'Person.example.com', '@example.com', 'a@@example.com', 'a@example.com\n', 'a\r@example.com', 'a\0@example.com', 'a,b@example.com', 'a..b@example.com', '.a@example.com', 'a.@example.com', 'a@-example.com', 'a@example..com', 'a@localhost', 'a'.repeat(65) + '@example.com', ' '.repeat(321) + 'a@example.com'])('unsafe or unsupported email input is refused without coercion', rawValue => {
   expect(() => emailValue(rawValue)).toThrow('A valid email is required');
 });

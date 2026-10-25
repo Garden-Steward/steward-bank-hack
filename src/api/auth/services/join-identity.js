@@ -86,8 +86,10 @@ module.exports = ({ strapi }) => {
   }
   async function withTransaction(operation) {
     if (strapi.db.inTransaction()) fail('IDENTITY_FOREIGN_TRANSACTION');
+    let completion;
     try {
-      return await strapi.db.transaction(async ({ trx }) => {
+      const result = await strapi.db.transaction(async ({ trx }) => {
+        completion = trx.executionPromise.then(() => ({ ok: true }), error => ({ ok: false, error }));
         const client = strapi.db.connection.client.config.client;
         if (client === 'pg' || client === 'postgres') await trx.raw("SELECT pg_advisory_xact_lock(hashtext('garden-steward-identity-v1'))");
         else if (!['sqlite', 'sqlite3', 'better-sqlite3'].includes(client)) fail('IDENTITY_DATABASE_UNSUPPORTED');
@@ -95,6 +97,9 @@ module.exports = ({ strapi }) => {
         transactions.add(trx);
         try { return await operation(trx); } finally { transactions.delete(trx); }
       });
+      const completed = await completion;
+      if (!completed.ok) throw completed.error;
+      return result;
     } catch (error) {
       if (error instanceof AdmissionRejected) return { kind: 'rejected', code: error.code, retryAfterSeconds: error.retryAfterSeconds };
       throw error;
@@ -265,7 +270,7 @@ module.exports = ({ strapi }) => {
       };
       if (proof.purpose === 'email_login' && !proof.actor_id) data.sealed_payload = null;
       const changed = await liveIntent(trx, trx(table('contact-proof')).where({ id: proof.id, generation: proof.generation, consumed_at: null, superseded_at: null })).update(data);
-      if (changed !== 1) fail('IDENTITY_PROOF_CHANGED');
+      if (changed !== 1) throw new AdmissionRejected('IDENTITY_PROOF_UNAVAILABLE');
       let scopeReceiptId = null;
       if (proof.intent_id) scopeReceiptId = (await trx(table('join-intent')).where({ id: proof.intent_id }).first()).receipt_id;
       const saved = { id: proof.id, receiptId: proof.receipt_id, generation: data.generation, expiresAt: data.expires_at.toISOString() };

@@ -11,6 +11,7 @@ module.exports = function emailValue(rawValue) {
   if (typeof rawValue !== 'string' || !rawValue.length || rawValue.length > 320 || /[\r\n\0]/.test(rawValue)) invalid();
   const trimmed = rawValue.trim();
   const separator = trimmed.lastIndexOf('@');
+  if (separator < 1) invalid();
   const local = trimmed.slice(0, separator);
   const deliveryValue = local + '@' + trimmed.slice(separator + 1).toLowerCase();
   if (!EMAIL.test(deliveryValue) || local.length > 64 || local.startsWith('.') || local.endsWith('.') || local.includes('..')) invalid();
