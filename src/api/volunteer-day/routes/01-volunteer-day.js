@@ -25,6 +25,7 @@ module.exports = {
       method: 'GET',
       path: '/volunteer-days/public',
       handler: 'volunteer-day.getPublic',
+      config: { auth: false },
     },
     { // Garden Steward's starter briefs, keyed by event type. Static content
       // the editors offer as a starting point; nothing private in it.
