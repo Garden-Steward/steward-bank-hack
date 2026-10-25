@@ -8,7 +8,7 @@ driving them. `CLAUDE.md` just points here, so this is the one file to keep curr
 steward-bank is the backend for **Garden Steward** (steward.garden): SMS-first software for
 running public, foragable community gardens — volunteer days, watering schedules, tasks,
 projects, plants, SMS campaigns and per-organization SMS billing. The web frontend is
-**garden-vue** (`Garden-Steward/garden-vue-hack` for this hackathon); its `DESIGN.md` covers
+**garden-vue** (`Garden-Steward/garden-vue`, hackathon fork `garden-vue-hack`); its `DESIGN.md` covers
 anything visual, including email templates.
 
 > The README is partly out of date. Trust this file: it's **Strapi 5.36** (not 4), email is
@@ -27,10 +27,19 @@ Then edit `.env` for safe local development:
 ```bash
 ENVIRONMENT=development
 SMS_DRY_RUN=true              # REQUIRED — never send real texts from a laptop
+```
+
+If your checkout's `.env.example` lists these, set them too (they arrived in the hackathon
+fork's seeding fix and may not be on `main` yet):
+
+```bash
 EMAIL_DRY_RUN=true
 UPLOAD_PROVIDER=local         # files go to public/uploads instead of Google Cloud
 LOCAL_FULL_ACCESS=true        # keep seeded permissions open on dev restarts
 ```
+
+Without them, leaving `RESEND_API_KEY` and `GOOGLE_CLOUD_CREDENTIALS` blank means email sends
+and media uploads fail. Avoid those flows or ask a maintainer for sandbox keys.
 
 Local dev needs Postgres (tests use SQLite and don't). Quickest way:
 
