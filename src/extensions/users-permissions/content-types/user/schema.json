@@ -196,6 +196,52 @@
     "muted_gardens": {
       "type": "json",
       "description": "documentIds of gardens this user muted from the website. Their group texts (volunteer-day announcements, SMS campaigns) skip this user; membership and assigned-task texts are unchanged."
+    },
+    "linkedinUrl": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "employer": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "jobTitle": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "skills": {
+      "type": "json"
+    },
+    "availability": {
+      "type": "json"
+    },
+    "frequency": {
+      "type": "enumeration",
+      "enum": [
+        "weekly",
+        "monthly",
+        "occasionally"
+      ]
+    },
+    "volunteerBenefits": {
+      "type": "json"
+    },
+    "goals": {
+      "type": "text"
+    },
+    "smsConsent": {
+      "type": "boolean",
+      "default": false
+    },
+    "smsConsentAt": {
+      "type": "datetime"
+    },
+    "emailConsent": {
+      "type": "boolean",
+      "default": false
+    },
+    "onboardingCompletedAt": {
+      "type": "datetime"
     }
   }
 }
