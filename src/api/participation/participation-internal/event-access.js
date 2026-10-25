@@ -8,18 +8,20 @@ module.exports = ({ strapi }) => {
     if (client === 'pg' || client === 'postgres') query.forUpdate();
     return query;
   };
-  async function published(trx, uid, documentId) {
+  async function published(trx, uid, documentId, writable) {
     const table = strapi.db.metadata.get(uid).tableName;
-    const rows = await lock(trx(table).select('id').where({ document_id: documentId }).whereNotNull('published_at').limit(2));
+    const builder = trx(table).select('id').where({ document_id: documentId }).whereNotNull('published_at').limit(2);
+    if (writable) lock(builder);
+    const rows = await builder;
     if (rows.length !== 1) problem('EVENT_NOT_FOUND', 404);
     return rows[0];
   }
   const read = async (trx, documentId, { joining = true } = {}) => {
     if (typeof documentId !== 'string' || !/^[a-z0-9]{10,40}$/i.test(documentId)) problem('EVENT_NOT_FOUND', 404);
-    const row = await published(trx, 'api::volunteer-day.volunteer-day', documentId);
+    const row = await published(trx, 'api::volunteer-day.volunteer-day', documentId, joining);
     const event = await strapi.db.query('api::volunteer-day.volunteer-day').findOne({ where: { id: row.id }, populate: { garden: { select: ['documentId'] } } });
     if (!event || event.accessibility !== 'Public' || !event.garden?.documentId) problem('EVENT_NOT_FOUND', 404);
-    const gardenRow = await published(trx, 'api::garden.garden', event.garden.documentId);
+    const gardenRow = await published(trx, 'api::garden.garden', event.garden.documentId, joining);
     const garden = await strapi.db.query('api::garden.garden').findOne({ where: { id: gardenRow.id }, select: ['id', 'documentId', 'title', 'slug'] });
     if (joining && (event.canceled || event.disabled || !event.startDatetime || new Date(event.startDatetime).getTime() <= Date.now() || event.partiful_link)) problem('EVENT_UNAVAILABLE', 409);
     return {

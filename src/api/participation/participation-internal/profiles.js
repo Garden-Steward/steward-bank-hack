@@ -9,8 +9,10 @@ module.exports = ({ strapi }) => {
     if (client === 'pg' || client === 'postgres') query.forUpdate();
     return query;
   };
-  async function current(trx, userId) {
-    return lock(trx(table('join-profile')).where({ user_id: userId })).first();
+  async function current(trx, userId, writable = true) {
+    const builder = trx(table('join-profile')).where({ user_id: userId });
+    if (writable) lock(builder);
+    return builder.first();
   }
   async function view(trx, row) {
     if (!row) return null;
@@ -50,7 +52,7 @@ module.exports = ({ strapi }) => {
     return 'saved';
   }
   return {
-    async read(trx, userId) { return view(trx, await current(trx, userId)); },
+    async read(trx, userId) { return view(trx, await current(trx, userId, false)); },
     async forJoin(trx, userId, draft, emailProofId) {
       if (!draft.saveReusableProfile) return 'not_requested';
       return save(trx, userId, draft, emailProofId);

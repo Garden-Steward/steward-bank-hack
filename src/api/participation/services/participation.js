@@ -31,10 +31,12 @@ module.exports = ({ strapi }) => {
     if (client === 'pg' || client === 'postgres') return trx.raw('clock_timestamp()');
     return trx.raw("(julianday('now') - 2440587.5) * 86400000");
   }
-  async function actor(trx, id) {
+  async function actor(trx, id, writable = true) {
     if (!Number.isSafeInteger(id) || id < 1) problem('INVALID_SESSION', 401);
     const users = strapi.db.metadata.get('plugin::users-permissions.user').tableName;
-    const row = await lock(trx(users).where({ id })).first();
+    const builder = trx(users).where({ id });
+    if (writable) lock(builder);
+    const row = await builder.first();
     if (!row || row.blocked) problem('INVALID_SESSION', 401);
     return row;
   }
@@ -256,7 +258,7 @@ module.exports = ({ strapi }) => {
     },
     async readOwnProfile(actorId) {
       assertStorageReady();
-      return strapi.db.transaction(async ({ trx }) => { await actor(trx, actorId); return profiles.read(trx, actorId); });
+      return strapi.db.transaction(async ({ trx }) => { await actor(trx, actorId, false); return profiles.read(trx, actorId); });
     },
     async saveOwnProfile(actorId, body) {
       input.body(body, ['requestId', 'version', 'preferredNameRaw', 'emailRaw', 'phoneRaw', 'preferences']);
@@ -275,7 +277,7 @@ module.exports = ({ strapi }) => {
       input.documentId(eventDocumentId);
       assertStorageReady();
       return strapi.db.transaction(async ({ trx }) => {
-        await actor(trx, actorId); await access(trx, eventDocumentId, { joining: false });
+        await actor(trx, actorId, false); await access(trx, eventDocumentId, { joining: false });
         const row = await trx(table('participation')).where({ user_id: actorId, event_document_id: eventDocumentId }).first();
         if (!row) return null;
         return receipt(row);
@@ -285,7 +287,7 @@ module.exports = ({ strapi }) => {
       assertStorageReady();
       if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100 || (page - 1) * pageSize > 100000) problem('INVALID_PAGINATION', 400);
       return strapi.db.transaction(async ({ trx }) => {
-        await actor(trx, actorId);
+        await actor(trx, actorId, false);
         const base = () => trx(table('participation')).where({ user_id: actorId });
         const total = Number((await base().count('* as count').first()).count);
         const rows = await base().orderBy([{ column: 'updated_at', order: 'desc' }, { column: 'id', order: 'asc' }]).offset((page - 1) * pageSize).limit(pageSize);
