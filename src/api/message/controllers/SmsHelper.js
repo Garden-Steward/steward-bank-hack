@@ -3,6 +3,7 @@ const { addDays, differenceInDays } = require('date-fns');
 const {utcToZonedTime,} = require("date-fns-tz");
 const InstructionHelper = require('../../instruction/controllers/helper');
 const SmsOptOut = require('../../../utils/sms-opt-out');
+const Reserve = require('../../garden-task/services/reserve');
 
 /***
  * Updates tasks like "yes" to find certain status Garden Tasks and update them.
@@ -17,6 +18,9 @@ SmsHelper.handleYesResponse = async(smsText, user) => {
     if (question.meta_data?.instructionId) {
       console.log('approving instruction')
       return InstructionHelper.approveInstructionId({user, instructionId: question.meta_data?.instructionId, question});
+    } else if (question.meta_data?.reserveTaskId) {
+      // A reserve-list offer: the spot is theirs.
+      return Reserve.accept(user, question.meta_data.reserveTaskId);
     } else {
       return SmsHelper.handleGardenTask(smsText, user, question);
     }
@@ -552,6 +556,10 @@ SmsHelper.finishTask = async(user) => {
 SmsHelper.findBackupUsers = async(user) => {
 
   const latestQuestion = await strapi.service('api::message.message').validateQuestion(user);
+  // NO to a reserve-list offer: pass the spot to the next person in line.
+  if (latestQuestion?.meta_data?.reserveTaskId) {
+    return Reserve.decline(user, latestQuestion.meta_data.reserveTaskId);
+  }
   let task;
   if (!latestQuestion ) {
     task = await strapi.service('api::garden-task.garden-task').findTaskFromUser(user);

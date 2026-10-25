@@ -52,7 +52,31 @@ const MEMBER_ACTIONS = [
   'api::garden.garden.replacePlots',
   'api::organization.organization.usageList',
   'api::organization.organization.usageReport',
+  // Explore: drop off a task, the reserve list, finish from the page, un-RSVP a workday.
+  'api::garden-task.garden-task.leaveTask',
+  'api::garden-task.garden-task.joinReserve',
+  'api::garden-task.garden-task.leaveReserve',
+  'api::garden-task.garden-task.finishTask',
+  'api::volunteer-day.volunteer-day.unrsvpEvent',
 ];
+
+// Signed-out visitors sign up and join reserve lists by phone number (the
+// controllers only ever reply with an SMS invite or id lists). Only adds.
+const PUBLIC_ACTIONS = [
+  'api::garden-task.garden-task.rsvpTask',
+  'api::garden-task.garden-task.joinReserve',
+];
+
+async function grantPublicPermissions(strapi) {
+  const role = await strapi.db.query('plugin::users-permissions.role').findOne({ where: { type: 'public' }, populate: ['permissions'] });
+  if (!role) return;
+  const has = new Set((role.permissions || []).map((p) => p.action));
+  const missing = PUBLIC_ACTIONS.filter((action) => !has.has(action));
+  for (const action of missing) {
+    await strapi.db.query('plugin::users-permissions.permission').create({ data: { action, role: role.id } });
+  }
+  if (missing.length) strapi.log.info(`[bootstrap] granted public: ${missing.join(', ')}`);
+}
 
 async function grantMemberPermissions(strapi) {
   const roles = await strapi.db.query('plugin::users-permissions.role').findMany({
@@ -161,6 +185,12 @@ module.exports = {
       await grantMemberPermissions(strapi);
     } catch (err) {
       strapi.log.error('[bootstrap] could not grant garden membership permissions:', err);
+    }
+
+    try {
+      await grantPublicPermissions(strapi);
+    } catch (err) {
+      strapi.log.error('[bootstrap] could not grant public sign-up permissions:', err);
     }
 
     try {

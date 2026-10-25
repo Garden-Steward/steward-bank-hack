@@ -90,6 +90,22 @@ module.exports = {
     },
   },
 
+  // Reserve-list offers nobody answered move on to the next person.
+  reserveOffers: {
+    task: async ({ strapi }) => {
+      try {
+        const n = await require('../src/api/garden-task/services/reserve').expireOffers();
+        if (n) strapi.log.info(`reserveOffers: moved ${n} unanswered offer(s) along`);
+      } catch (err) {
+        console.error('ERR reserveOffers:', err);
+      }
+    },
+    options: {
+      rule: '*/15 * * * *',
+      tz: 'America/Los_Angeles',
+    },
+  },
+
   pollAutoClose: {
     task: async ({ strapi }) => {
       strapi.log.info('triggering pollAutoClose cron');
