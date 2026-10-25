@@ -23,6 +23,11 @@ eventHelper.inviteUserEvent = async (data) => {
 }
 
 eventHelper.rsvpEvent = async (eventId, data) => {
+  if (process.env.PARTICIPATION_ENABLED === 'true') {
+    const outcome = await strapi.service('api::participation.participation').legacyRsvp(data.userId, eventId, { userId: data.userId });
+    const projected = await strapi.service('api::participation.participation').projectConfirmed([{ documentId: outcome.join.event.documentId }], data.userId);
+    return { data: { ...projected[0], join: outcome.join } };
+  }
   let event = await strapi.db.query('api::volunteer-day.volunteer-day').findOne({
     populate: ['confirmed'],
     where: {

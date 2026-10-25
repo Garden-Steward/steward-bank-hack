@@ -50,6 +50,12 @@ async function legacyUser(data) {
   try { return await users().create({ data }); }
   finally { process.env.PARTICIPATION_ENABLED = enabled; }
 }
+async function permit(type, action) {
+  const role = await strapi.db.query('plugin::users-permissions.role').findOne({ where: { type } });
+  const permissions = strapi.db.query('plugin::users-permissions.permission');
+  if (!(await permissions.findOne({ where: { role: role.id, action } }))) await permissions.create({ data: { role: role.id, action } });
+  return role;
+}
 
 beforeAll(async () => {
   previousKey = process.env.PARTICIPATION_IDENTITY_KEY;
@@ -391,4 +397,109 @@ test('verified constructor permission does not leak to another concurrent legacy
     expect(strapi.service('api::auth.join-identity').legacyEmailWritePermitted()).toBe(false);
     await expect(users().create({ data: { username: uuid(), email: 'Unsafe.' + uuid() + '@example.com', provider: 'local' } })).rejects.toMatchObject({ name: 'ValidationError' });
   } finally { release(); await completing; native.add = original; }
+});
+
+test('legacy confirmation import is idempotent across document versions without attendance, consent or newsletter enrollment', async () => {
+  const role = await strapi.db.query('plugin::users-permissions.role').findOne({ where: { type: 'authenticated' } });
+  const user = await users().create({ data: { username: uuid(), role: role.id, provider: 'local', confirmed: true, blocked: false } });
+  const selected = await event();
+  const rows = await strapi.db.query(eventUid).findMany({ where: { documentId: selected.documentId }, select: ['id'] });
+  for (const row of rows) await strapi.db.query(eventUid).update({ where: { id: row.id }, data: { confirmed: [user.id] } });
+  const first = await service.importLegacyConfirmed();
+  expect(first.created).toBe(1);
+  expect((await service.importLegacyConfirmed()).created).toBe(0);
+  const saved = await query('participation').findOne({ where: { userId: user.id, eventDocumentId: selected.documentId } });
+  expect(saved).toMatchObject({ rsvpState: 'confirmed', checkedInAt: null, followupState: 'not_planned', joinSnapshotJson: { source: 'legacy_import', rsvpTimeKnown: false } });
+  expect(saved.rsvpedAt).toBeTruthy();
+  expect((await service.ownReceipt(user.id, selected.documentId)).rsvpedAt).toBeNull();
+  expect(await query('consent-receipt').count({ where: { userId: user.id } })).toBe(0);
+  expect(await strapi.db.query('api::newsletter.newsletter-subscription').count({ where: { userId: user.id } })).toBe(0);
+  expect(await privateProfile(user.id)).toBeNull(); expect(inbox).toEqual([]);
+});
+
+test('core RSVP filter uses canonical state before pagination and projects only self plus the real count', async () => {
+  await permit('authenticated', 'api::volunteer-day.volunteer-day.find');
+  const item = await pendingAfterCooldown(); const registered = await verify(item); const actorId = registered.sessionActorId;
+  const token = await strapi.plugin('users-permissions').service('jwt').issue({ id: actorId });
+  const other = await users().create({ data: { username: uuid(), provider: 'local', blocked: false } });
+  await strapi.db.query(eventUid).update({ where: { id: item.selected.id }, data: { confirmed: [other.id] } });
+  const stale = await event();
+  await strapi.db.query(eventUid).update({ where: { id: stale.id }, data: { confirmed: [actorId] } });
+  await query('participation').create({ data: { receiptId: secret(), eventDocumentId: stale.documentId, gardenDocumentId: garden.documentId, userId: actorId, rsvpState: 'cancelled', rsvpedAt: new Date().toISOString(), joinSnapshotJson: {} } });
+  const http = request(strapi.server.httpServer);
+  const result = await http.get('/api/volunteer-days?filters[confirmed][id][$eq]=' + actorId + '&status=published&pagination[pageSize]=1&populate[confirmed]=true').auth(token, { type: 'bearer' }).expect(200);
+  expect(result.body.meta.pagination.total).toBe(1);
+  expect(result.body.data.map(row => row.documentId)).toEqual([item.selected.documentId]);
+  expect(result.body.data[0].confirmed).toEqual([{ id: actorId }]); expect(result.body.data[0].confirmedCount).toBe(1);
+  await http.get('/api/volunteer-days?filters[confirmed][id][$eq]=' + other.id).auth(token, { type: 'bearer' }).expect(400);
+  const anonymous = await http.get('/api/volunteer-days/by-id/' + item.selected.documentId).expect(200);
+  expect(anonymous.body.data.confirmed).toEqual([]); expect(anonymous.body.data.confirmedCount).toBe(1);
+  expect(anonymous.headers['cache-control']).toBe('no-store');
+});
+
+test('legacy numeric self adapter confirms through one authority with no SMS or relation dual write', async () => {
+  await permit('authenticated', 'api::volunteer-day.volunteer-day.rsvpEvent');
+  await permit('public', 'api::volunteer-day.volunteer-day.rsvpEvent');
+  const item = await pendingAfterCooldown(); const registered = await verify(item); const actorId = registered.sessionActorId;
+  const token = await strapi.plugin('users-permissions').service('jwt').issue({ id: actorId });
+  const selected = await event(); const http = request(strapi.server.httpServer);
+  const sms = jest.spyOn(strapi.service('api::sms.sms'), 'handleSms');
+  try {
+    await http.post('/api/volunteer-days/rsvp/' + selected.id).send({ data: { phoneNumber: '5105550123' } }).expect(401);
+    await http.post('/api/volunteer-days/rsvp/' + selected.id).auth(token, { type: 'bearer' }).send({ data: { userId: actorId + 100000 } }).expect(409);
+    const confirmed = await http.post('/api/volunteer-days/rsvp/' + selected.id).auth(token, { type: 'bearer' }).send({ data: { userId: actorId } }).expect(200);
+    expect(confirmed.body.data.confirmed).toEqual([{ id: actorId }]); expect(confirmed.body.data.confirmedCount).toBe(1);
+    const original = await strapi.db.query(eventUid).findOne({ where: { id: selected.id }, populate: { confirmed: { select: ['id'] } } });
+    expect(original.confirmed).toEqual([]);
+    await http.post('/api/volunteer-days/rsvp/' + selected.id).auth(token, { type: 'bearer' }).send({ data: { userId: actorId } }).expect(200);
+    expect(await query('participation').count({ where: { eventDocumentId: selected.documentId, userId: actorId } })).toBe(1);
+    expect(sms).not.toHaveBeenCalled();
+  } finally { sms.mockRestore(); }
+});
+
+test('core confirmed writes are rejected and nested projection keeps separate campaign confirmation state', async () => {
+  const selected = await event();
+  await expect(strapi.documents(eventUid).update({ documentId: selected.documentId, data: { confirmed: [] } })).rejects.toMatchObject({ name: 'ValidationError' });
+  const cleaned = service.stripConfirmedPopulate('api::project.project', { related_events: { populate: { confirmed: true, hero_image: true } } });
+  expect(cleaned.related_events.populate).toEqual({ hero_image: true });
+  expect(service.stripConfirmedPopulate('api::sms-campaign.sms-campaign', { confirmed: true })).toEqual({ confirmed: true });
+  expect(() => service.stripConfirmedPopulate(eventUid, ['__proto__.confirmed'])).toThrow('Unsupported population');
+});
+
+test('anonymous hidden and draft event details are404 under the new authority', async () => {
+  const hidden = await event({ accessibility: 'Garden Members' });
+  const draft = await strapi.documents(eventUid).create({ data: { title: 'Synthetic unpublished workday', garden: garden.documentId, accessibility: 'Public', startDatetime: new Date(Date.now() + 86400000).toISOString() } });
+  const http = request(strapi.server.httpServer);
+  await http.get('/api/volunteer-days/by-id/' + hidden.documentId).expect(404);
+  await http.get('/api/volunteer-days/by-id/' + draft.documentId).expect(404);
+});
+
+test('a document-level garden manager retains private draft event access', async () => {
+  const role = await strapi.db.query('plugin::users-permissions.role').findOne({ where: { type: 'authenticated' } });
+  const manager = await users().create({ data: { username: uuid(), role: role.id, provider: 'local', blocked: false } });
+  const versions = await strapi.db.query('api::garden.garden').findMany({ where: { documentId: garden.documentId }, select: ['id', 'publishedAt'] });
+  const draftGarden = versions.find(row => !row.publishedAt);
+  await strapi.db.query('api::garden.garden').update({ where: { id: draftGarden.id }, data: { managers: [manager.id] } });
+  const selected = await strapi.documents(eventUid).create({ data: { title: 'Synthetic private planning event', garden: garden.documentId, accessibility: 'Garden Members', startDatetime: new Date(Date.now() + 86400000).toISOString() } });
+  const token = await strapi.plugin('users-permissions').service('jwt').issue({ id: manager.id });
+  const http = request(strapi.server.httpServer);
+  await http.get('/api/volunteer-days/by-id/' + selected.documentId).expect(404);
+  const result = await http.get('/api/volunteer-days/by-id/' + selected.documentId).auth(token, { type: 'bearer' }).expect(200);
+  expect(result.body.data.documentId).toBe(selected.documentId);
+});
+
+test('linked project events use canonical counts and project interest never creates a typed-email account', async () => {
+  await permit('authenticated', 'api::project.project.findOne');
+  await permit('authenticated', 'api::volunteer-day.volunteer-day.find');
+  const item = await pendingAfterCooldown(); const registered = await verify(item);
+  const token = await strapi.plugin('users-permissions').service('jwt').issue({ id: registered.sessionActorId });
+  const project = await strapi.documents('api::project.project').create({ status: 'published', data: { title: 'Synthetic shared project', short_description: 'A shared garden project for this test.', slug: 'synthetic-' + uuid(), garden: garden.documentId, review_status: 'APPROVED', related_events: [item.selected.documentId] } });
+  const http = request(strapi.server.httpServer);
+  const result = await http.get('/api/projects/' + project.documentId + '?status=published&populate[related_events][populate][confirmed]=true').auth(token, { type: 'bearer' }).expect(200);
+  expect(result.body.data.related_events[0]).toMatchObject({ documentId: item.selected.documentId, confirmedCount: 1, confirmed: [{ id: registered.sessionActorId }] });
+  const before = await users().count();
+  await http.post('/api/projects/' + project.id + '/express-interest').send({ email: 'Unverified.' + uuid() + '@example.com' }).expect(401);
+  const interested = await http.post('/api/projects/' + project.id + '/express-interest').auth(token, { type: 'bearer' }).send({}).expect(200);
+  expect(interested.body).toEqual({ count: 1, isInterested: true });
+  expect(await users().count()).toBe(before);
 });

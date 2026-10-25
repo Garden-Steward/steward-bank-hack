@@ -7,6 +7,7 @@ const createOptions = require('../participation-internal/options');
 const createEventAccess = require('../participation-internal/event-access');
 const createRequests = require('../participation-internal/requests');
 const createProfiles = require('../participation-internal/profiles');
+const createLegacy = require('../participation-internal/legacy');
 const { ensureConstraints } = require('../participation-internal/constraints');
 
 module.exports = ({ strapi }) => {
@@ -18,6 +19,7 @@ module.exports = ({ strapi }) => {
   const access = createEventAccess({ strapi });
   const requests = createRequests({ strapi });
   const profiles = createProfiles({ strapi });
+  const legacy = createLegacy({ strapi });
   const identity = () => strapi.service('api::auth.join-identity');
   const table = name => strapi.db.metadata.get('api::participation.' + name).tableName;
   const query = name => strapi.db.query('api::participation.' + name);
@@ -49,9 +51,12 @@ module.exports = ({ strapi }) => {
     return new Date(value).toISOString();
   }
   function receipt(row) {
+    const snapshot = json(row.join_snapshot_json);
+    let rsvpedAt = date(row.rsvped_at);
+    if (snapshot.rsvpTimeKnown === false) rsvpedAt = null;
     return {
       receiptId: row.receipt_id, eventDocumentId: row.event_document_id, version: row.version,
-      rsvp: row.rsvp_state, rsvpedAt: date(row.rsvped_at), checkedInAt: date(row.checked_in_at),
+      rsvp: row.rsvp_state, rsvpedAt, checkedInAt: date(row.checked_in_at),
       followup: { state: row.followup_state, dueAt: date(row.due_at), reason: null },
     };
   }
@@ -93,6 +98,7 @@ module.exports = ({ strapi }) => {
     let kind = 'confirmed';
     if (row.rsvp_state === 'confirmed') kind = 'already_confirmed';
     const snapshot = { preferredNameRaw: draft.preferredNameRaw, emailRaw: draft.emailRaw, phoneRaw: draft.phoneRaw, preferences: draft.preferences };
+    if (json(row.join_snapshot_json).rsvpTimeKnown === false) snapshot.rsvpTimeKnown = false;
     let rsvpedAt = row.rsvped_at;
     if (!rsvpedAt) rsvpedAt = new Date();
     const changed = await access.fence(trx, trx(table('participation')).where({ id: row.id, version: row.version }), context).update({
@@ -141,7 +147,11 @@ module.exports = ({ strapi }) => {
   return {
     async ensureStorage() {
       if (state.kind === 'checking') return state.promise;
-      const promise = ensureConstraints(strapi).then(() => {
+      const promise = ensureConstraints(strapi).then(async () => {
+        if (process.env.PARTICIPATION_ENABLED === 'true') {
+          const cutover = await strapi.store({ type: 'plugin', name: 'participation', key: 'cutover-v1' }).get();
+          if (!cutover) await legacy.importConfirmed();
+        }
         state = { kind: 'ready' };
       }, error => {
         state = { kind: 'unavailable' };
@@ -151,6 +161,11 @@ module.exports = ({ strapi }) => {
       return promise;
     },
     assertStorageReady,
+    importLegacyConfirmed: () => legacy.importConfirmed(),
+    projectConfirmed: (entries, actorId) => legacy.project(entries, actorId),
+    prepareLegacyQuery: (params, actorId) => legacy.prepareQuery(params, actorId),
+    stripConfirmedPopulate: (uid, params) => legacy.populate(uid, params),
+    optionalLegacyActor: ctx => legacy.optionalActor(ctx),
     options() { assertStorageReady(); return options.read(); },
     async submit(actorId, eventDocumentId, body, socketPeer) {
       input.documentId(eventDocumentId);
@@ -281,6 +296,30 @@ module.exports = ({ strapi }) => {
         const row = await trx(table('participation')).where({ user_id: actorId, event_document_id: eventDocumentId }).first();
         if (!row) return null;
         return receipt(row);
+      });
+    },
+    async legacyRsvp(actorId, eventId, data) {
+      input.object(data, ['userId']);
+      if (Object.hasOwn(data, 'userId') && String(data.userId) !== String(actorId)) problem('ACCOUNT_CHANGED', 409);
+      return mutation(async trx => {
+        await actor(trx, actorId);
+        let documentId = String(eventId);
+        if (/^[0-9]+$/.test(documentId)) {
+          if (!Number.isSafeInteger(Number(eventId)) || Number(eventId) < 1 || Number(eventId) > 2147483647) problem('EVENT_NOT_FOUND', 404);
+          const event = await strapi.db.query('api::volunteer-day.volunteer-day').findOne({ where: { id: Number(eventId) }, select: ['documentId'] });
+          if (!event) problem('EVENT_NOT_FOUND', 404);
+          documentId = event.documentId;
+        }
+        const context = await access(trx, documentId);
+        const existing = await trx(table('participation')).where({ event_document_id: documentId, user_id: actorId, rsvp_state: 'confirmed' }).first();
+        if (existing) return { join: await joinOutcome(trx, existing.id, { kind: 'already_confirmed', profileSave: 'not_requested' }) };
+        const profile = await profiles.read(trx, actorId);
+        if (!profile) problem('DETAILS_REQUIRED', 422);
+        const contact = await identity().ownedEmail(trx, { actorId, rawValue: profile.emailRaw });
+        if (!contact) problem('DETAILS_REQUIRED', 422);
+        const draft = input.draft({ preferredNameRaw: profile.preferredNameRaw, emailRaw: profile.emailRaw, phoneRaw: profile.phoneRaw, preferences: profile.preferences, accessRequestRaw: null, saveReusableProfile: false, profileVersion: profile.version }, await options.read());
+        const result = await completeParticipation(trx, context, actorId, draft, contact.proofId, contact.contactId);
+        return cached(trx, result);
       });
     },
     async listOwn(actorId, { page = 1, pageSize = 100 } = {}) {

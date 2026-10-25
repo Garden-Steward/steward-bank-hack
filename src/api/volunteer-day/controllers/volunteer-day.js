@@ -42,6 +42,16 @@ const BRIEF_POPULATE = { agenda: true, bring_items: true };
 const HIDDEN_TASK_STATUSES = ['ABANDONED', 'SKIPPED'];
 
 module.exports = createCoreController('api::volunteer-day.volunteer-day', ({strapi}) => ({
+    async find(ctx) {
+      if (process.env.PARTICIPATION_ENABLED !== 'true') return super.find(ctx);
+      const participation = strapi.service('api::participation.participation');
+      const actorId = ctx.state.user?.id || null;
+      ctx.query = await participation.prepareLegacyQuery(ctx.query, actorId);
+      const response = await super.find(ctx);
+      response.data = await participation.projectConfirmed(response.data, actorId);
+      ctx.set('Cache-Control', 'no-store');
+      return response;
+    },
 
     // Fetch a single event by NUMERIC id. v5's core findOne keys on documentId,
     // but numeric /d/:id links are sent in SMS messages, so the frontend still
@@ -67,7 +77,7 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
       // This route is public and db.query skips the REST sanitizer, so user
       // relations must be narrowed by hand — never return password hashes,
       // reset tokens, phone numbers or emails from here.
-      const entry = await strapi.db.query('api::volunteer-day.volunteer-day').findOne({
+      const eventQuery = {
         where,
         populate: {
           recurring_template: { populate: { brief: { populate: BRIEF_POPULATE } } },
@@ -102,9 +112,26 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
             },
           },
         },
-      });
+      };
+      if (process.env.PARTICIPATION_ENABLED === 'true') delete eventQuery.populate.confirmed;
+      let entry = await strapi.db.query('api::volunteer-day.volunteer-day').findOne(eventQuery);
       if (!entry) {
         return ctx.notFound('Volunteer day not found');
+      }
+      let currentActor = null;
+      if (process.env.PARTICIPATION_ENABLED === 'true') {
+        const participation = strapi.service('api::participation.participation');
+        currentActor = await participation.optionalLegacyActor(ctx);
+        let manager = Boolean(currentActor && entry.garden?.managers?.some(user => user.id === currentActor));
+        if (currentActor && !manager && entry.garden?.documentId) manager = Boolean(await strapi.db.query('api::garden.garden').findOne({ where: { documentId: entry.garden.documentId, managers: { id: currentActor } }, select: ['id'] }));
+        if (currentActor && !manager) {
+          const user = await strapi.db.query('plugin::users-permissions.user').findOne({ where: { id: currentActor }, populate: ['role'] });
+          manager = user?.role?.type === 'administrator';
+        }
+        if (!manager) {
+          if (!entry.publishedAt || entry.accessibility !== 'Public') return ctx.notFound('Volunteer day not found');
+          if (entry.garden && !(await strapi.db.query('api::garden.garden').findOne({ where: { documentId: entry.garden.documentId, publishedAt: { $notNull: true } }, select: ['id'] }))) return ctx.notFound('Volunteer day not found');
+        }
       }
 
       // Everything the event page needs beyond the row itself. Computed here
@@ -139,6 +166,12 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
         }));
 
       entry.series = await briefSvc.loadSeries(entry);
+
+      if (process.env.PARTICIPATION_ENABLED === 'true') {
+        const participation = strapi.service('api::participation.participation');
+        [entry] = await participation.projectConfirmed([entry], currentActor);
+        ctx.set('Cache-Control', 'no-store');
+      }
 
       return { data: entry };
     },
@@ -258,6 +291,7 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
 
     getByUser: async ctx => {
       const authUser = ctx.state.user;
+      if (!authUser) return ctx.unauthorized('You must be logged in to access this resource');
       let fullUser = await strapi.db.query('plugin::users-permissions.user').findOne({
         where: { id: authUser.id },
         populate: ['gardens']
@@ -302,9 +336,14 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
       if (populate !== null) {
         queryOptions.populate = populate;
       }
+      if (process.env.PARTICIPATION_ENABLED === 'true' && queryOptions.populate) queryOptions.populate = strapi.service('api::participation.participation').stripConfirmedPopulate('api::volunteer-day.volunteer-day', queryOptions.populate);
 
       const entries = await strapi.db.query('api::volunteer-day.volunteer-day').findMany(queryOptions);
 
+      if (process.env.PARTICIPATION_ENABLED === 'true') {
+        ctx.set('Cache-Control', 'no-store');
+        return strapi.service('api::participation.participation').projectConfirmed(entries, authUser.id);
+      }
       return entries;
 
     },
@@ -368,13 +407,19 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
           total,
         };
 
-        const entries = results.map(entry => {
+        let entries = results.map(entry => {
           const hasVolunteerDayHeroImage = entry.hero_image && entry.hero_image.id;
           if (!hasVolunteerDayHeroImage && entry.garden && entry.garden.hero_image && entry.garden.hero_image.id) {
             entry.hero_image = entry.garden.hero_image;
           }
           return entry;
         });
+
+        if (process.env.PARTICIPATION_ENABLED === 'true') {
+          const participation = strapi.service('api::participation.participation');
+          entries = await participation.projectConfirmed(entries, await participation.optionalLegacyActor(ctx));
+          ctx.set('Cache-Control', 'no-store');
+        }
 
         ctx.body = {
           data: entries,
@@ -388,7 +433,17 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
     },
 
     rsvpEvent: async ctx => {
-      console.log("rsvp: ", ctx.params, ctx.request.body);
+      if (process.env.PARTICIPATION_ENABLED === 'true') {
+        const http = require('../../participation/participation-internal/http')({ strapi });
+        return http.run(ctx, async () => {
+          const actorId = await http.actor(ctx, true);
+          const body = ctx.request.body || {};
+          require('../../participation/participation-internal/input').object(body, ['data']);
+          const outcome = await strapi.service('api::participation.participation').legacyRsvp(actorId, ctx.params.id, body.data || {});
+          const projected = await strapi.service('api::participation.participation').projectConfirmed([{ documentId: outcome.join.event.documentId }], actorId);
+          ctx.body = { data: { ...projected[0], join: outcome.join } };
+        });
+      }
       const authUser = ctx.state.user;
       const body = ctx.request.body || {};
       const data = body.data || {};

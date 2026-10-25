@@ -15,6 +15,24 @@ const PUBLIC_USER_RELATIONS = ['interested'];
 const PUBLIC_STATUSES = ['APPROVED', 'COMPLETED'];
 const REVIEW_STATUSES = ['CREATED', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED', 'COMPLETED', 'ARCHIVED'];
 
+async function withParticipationCounts(strapi, ctx, response) {
+  if (process.env.PARTICIPATION_ENABLED !== 'true' || !response?.data) return response;
+  let projects = [response.data];
+  if (Array.isArray(response.data)) projects = response.data;
+  const ids = [...new Set(projects.flatMap(project => (project.related_events || []).map(event => event.documentId)).filter(Boolean))];
+  if (!ids.length) return response;
+  const counts = await strapi.service('api::participation.participation').projectConfirmed(ids.map(documentId => ({ documentId })), ctx.state.user?.id || null);
+  const byId = new Map(counts.map(event => [event.documentId, event]));
+  const values = projects.map(project => {
+    if (!Array.isArray(project.related_events)) return project;
+    return { ...project, related_events: project.related_events.map(event => ({ ...event, confirmed: byId.get(event.documentId)?.confirmed || [], confirmedCount: byId.get(event.documentId)?.confirmedCount || 0 })) };
+  });
+  if (Array.isArray(response.data)) response.data = values;
+  else response.data = values[0];
+  ctx.set('Cache-Control', 'no-store');
+  return response;
+}
+
 function sendError(ctx, status, name, message) {
   ctx.status = status;
   ctx.body = { data: null, error: { status, name, message } };
@@ -104,7 +122,7 @@ module.exports = createCoreController('api::project.project', ({ strapi }) => ({
       };
     }
     const response = await super.find(ctx);
-    return withPublicUserIds(strapi, 'api::project.project', ctx, response, PUBLIC_USER_RELATIONS);
+    return withParticipationCounts(strapi, ctx, await withPublicUserIds(strapi, 'api::project.project', ctx, response, PUBLIC_USER_RELATIONS));
   },
 
   async findOne(ctx) {
@@ -117,12 +135,12 @@ module.exports = createCoreController('api::project.project', ({ strapi }) => ({
     // v5 responses are flat; older `entity.attributes` kept as a fallback.
     const reviewStatus = entity.review_status ?? entity.attributes?.review_status;
     if (PUBLIC_STATUSES.includes(reviewStatus)) {
-      return withPublicUserIds(strapi, 'api::project.project', ctx, response, PUBLIC_USER_RELATIONS);
+      return withParticipationCounts(strapi, ctx, await withPublicUserIds(strapi, 'api::project.project', ctx, response, PUBLIC_USER_RELATIONS));
     }
 
     const user = ctx.state.user;
     if (isAdmin(user)) {
-      return response;
+      return withParticipationCounts(strapi, ctx, response);
     }
     if (user) {
       const full = await strapi.db.query('api::project.project').findOne({
@@ -132,7 +150,7 @@ module.exports = createCoreController('api::project.project', ({ strapi }) => ({
       const isCreator = full?.created_by?.id === user.id;
       const isManager = (full?.managers || []).some((m) => m.id === user.id);
       if (isCreator || isManager) {
-        return response;
+        return withParticipationCounts(strapi, ctx, response);
       }
     }
     return ctx.notFound();
@@ -461,10 +479,23 @@ module.exports = createCoreController('api::project.project', ({ strapi }) => ({
     return this.transformResponse(updated);
   },
 
-  // Express interest in a project without requiring a full account.
-  // Soft-creates a user record from email (+ optional phone/name) so the person
-  // is tracked as an interested party and can later be promoted / SMS'd.
   async expressInterest(ctx) {
+    if (process.env.PARTICIPATION_ENABLED === 'true') {
+      const http = require('../../participation/participation-internal/http')({ strapi });
+      return http.run(ctx, async () => {
+        const userId = await http.actor(ctx, true);
+        const body = ctx.request.body || {};
+        require('../../participation/participation-internal/input').object(body, []);
+        const project = await strapi.db.query('api::project.project').findOne({ where: { id: ctx.params.id, publishedAt: { $notNull: true }, review_status: { $in: PUBLIC_STATUSES } }, populate: { interested: { select: ['id'] } } });
+        if (!project) return ctx.notFound('Project not found');
+        const ids = (project.interested || []).map(user => user.id);
+        if (!ids.includes(userId)) {
+          ids.push(userId);
+          await strapi.db.query('api::project.project').update({ where: { id: project.id }, data: { interested: ids } });
+        }
+        ctx.body = { count: ids.length, isInterested: true };
+      });
+    }
     const { id } = ctx.params;
     const body = ctx.request.body?.data || ctx.request.body || {};
     const email = (body.email || '').trim().toLowerCase();

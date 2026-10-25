@@ -179,6 +179,11 @@ module.exports = {
       strapi.log.error('[bootstrap] volunteer-day draft backfill failed:', err);
     }
 
+    const participationCutover = await strapi.store({ type: 'plugin', name: 'participation', key: 'cutover-v1' }).get();
+    if (participationCutover !== null && participationCutover !== undefined) {
+      if (participationCutover.version !== 1) throw new Error('Participation cutover state is invalid');
+      if (process.env.PARTICIPATION_ENABLED !== 'true') throw new Error('This database requires the verified participation owner to remain enabled');
+    }
     await strapi.service('api::participation.participation').ensureStorage();
 
     const guardLegacyEmail = (event, creating = false) => {
@@ -199,6 +204,19 @@ module.exports = {
       beforeCreateMany: event => guardLegacyEmail(event, true),
       beforeUpdate: event => guardLegacyEmail(event),
       beforeUpdateMany: event => guardLegacyEmail(event),
+    });
+    strapi.documents.use(async (context, next) => {
+      if (process.env.PARTICIPATION_ENABLED !== 'true') return next();
+      const participation = strapi.service('api::participation.participation');
+      if (context.uid === 'api::volunteer-day.volunteer-day') {
+        if (['create', 'update'].includes(context.action) && context.params.data && Object.hasOwn(context.params.data, 'confirmed')) {
+          const { errors } = require('@strapi/utils');
+          throw new errors.ValidationError('Use event registration to change RSVP state.');
+        }
+        if (['findMany', 'findOne'].includes(context.action) && context.params.populate) context.params.populate = participation.stripConfirmedPopulate(context.uid, context.params.populate);
+      }
+      if (context.uid === 'api::project.project' && ['findMany', 'findOne'].includes(context.action) && context.params.populate) context.params.populate = participation.stripConfirmedPopulate(context.uid, context.params.populate);
+      return next();
     });
 
     // Ledger indexes (CREATE INDEX IF NOT EXISTS). Never blocks boot.
