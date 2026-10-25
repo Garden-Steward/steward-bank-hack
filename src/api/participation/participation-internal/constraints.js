@@ -22,19 +22,19 @@ function definitions(strapi, knex) {
       const field = column(attribute);
       if (definition.column?.notNullable) required.push(field);
       if (definition.column?.unique) unique.push([field]);
-      if (definition.enum) checks.push(sql('?? IN (' + definition.enum.map(() => '?').join(', ') + ')', [field, ...definition.enum]));
+      if (definition.enum) checks.push(definition.enum.map(value => '(' + sql('?? = ?', [field, value]) + ')').join(' OR '));
       if (typeof definition.min === 'number') checks.push(sql('?? >= ?', [field, definition.min]));
       if (typeof definition.max === 'number') checks.push(sql('?? <= ?', [field, definition.max]));
     }
     if (name === 'join-intent') checks.push("state <> 'completed' OR (participation_id IS NOT NULL AND completed_at IS NOT NULL)");
     if (name === 'contact-proof') {
       checks.push("purpose <> 'join_identity' OR intent_id IS NOT NULL");
-      checks.push("purpose NOT IN ('profile_email', 'profile_phone') OR actor_id IS NOT NULL");
+      checks.push("(purpose <> 'profile_email' AND purpose <> 'profile_phone') OR actor_id IS NOT NULL");
     }
     if (name === 'participation') {
       checks.push("rsvp_state = 'none' OR rsvped_at IS NOT NULL");
       checks.push('(checked_in_at IS NULL) = (token_generation IS NULL)');
-      checks.push("followup_state NOT IN ('queued', 'preparing', 'dispatching', 'accepted') OR (checked_in_at IS NOT NULL AND due_at IS NOT NULL AND deadline_at IS NOT NULL AND followup_consent_receipt_id IS NOT NULL)");
+      checks.push("(followup_state <> 'queued' AND followup_state <> 'preparing' AND followup_state <> 'dispatching' AND followup_state <> 'accepted') OR (checked_in_at IS NOT NULL AND due_at IS NOT NULL AND deadline_at IS NOT NULL AND followup_consent_receipt_id IS NOT NULL)");
       checks.push("followup_state <> 'accepted' OR (provider_sid IS NOT NULL AND accepted_at IS NOT NULL)");
       checks.push('due_at IS NULL OR deadline_at IS NULL OR due_at <= deadline_at');
     }
