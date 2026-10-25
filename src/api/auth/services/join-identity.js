@@ -298,13 +298,12 @@ module.exports = ({ strapi }) => {
     },
     async resolveFreshJoinAccount(trx, { proofId }) {
       requireTransaction(trx);
-      if (!transactions.get(trx).has(proofId)) fail('IDENTITY_FRESH_PROOF_REQUIRED');
+      if (!transactions.get(trx).delete(proofId)) fail('IDENTITY_FRESH_PROOF_REQUIRED');
       const proof = await lockProof(trx, { id: proofId });
       if (!proof || proof.purpose !== 'join_identity' || !proof.consumed_at || proof.superseded_at) fail('IDENTITY_PROOF_UNAVAILABLE');
       const intent = await trx(table('join-intent')).where({ id: proof.intent_id, state: 'pending' }).first();
       if (!intent) fail('IDENTITY_SCOPE_UNAVAILABLE');
       const result = await accounts.fresh(trx, proof, intent);
-      transactions.get(trx).delete(proofId);
       return result;
     },
     async resumeJoinAccount(trx, { intentId, actorId, browserSecret }) {

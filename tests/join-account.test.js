@@ -103,8 +103,14 @@ test('concurrent completion consumes once and creates one account and one regist
 test('a final write failure rolls back the proof, account, mapping, intent and newsletter together', async () => {
   const item = await pending();
   const before = await userQuery().count();
+  const newsletter = strapi.db.query('api::newsletter.newsletter-subscription');
+  const preferences = strapi.db.query('api::newsletter.newsletter-preference-event');
+  const beforeSubscriptions = await newsletter.count();
+  const beforePreferences = await preferences.count();
   await expect(complete(item, async () => { throw new Error('Synthetic final join write failure'); })).rejects.toThrow('Synthetic final join write failure');
   expect(await userQuery().count()).toBe(before);
+  expect(await newsletter.count()).toBe(beforeSubscriptions);
+  expect(await preferences.count()).toBe(beforePreferences);
   expect(await query('verified-contact').count({ where: { proofId: item.result.delivery.proofId } })).toBe(0);
   expect(await query('contact-proof').findOne({ where: { id: item.result.delivery.proofId } })).toMatchObject({ consumedAt: null });
   expect(await query('join-intent').findOne({ where: { id: item.intent.id } })).toMatchObject({ boundActorId: null, state: 'pending' });
@@ -176,6 +182,23 @@ test('a fresh proof claim cannot be reused twice within its original transaction
   await expect(complete(item, trx => owner.resolveFreshJoinAccount(trx, { proofId: item.result.delivery.proofId }))).rejects.toMatchObject({ code: 'IDENTITY_FRESH_PROOF_REQUIRED' });
   expect(await userQuery().count()).toBe(before);
   expect((await query('contact-proof').findOne({ where: { id: item.result.delivery.proofId } })).consumedAt).toBeNull();
+});
+
+test('overlapping resolvers within one transaction admit the fresh claim exactly once', async () => {
+  const first = await pending();
+  const account = await complete(first);
+  const returning = await pending({ rawValue: first.command.rawValue });
+  const results = await owner.withTransaction(async trx => {
+    const verified = await owner.consumeEmailProof(trx, returning.submission);
+    expect(verified.kind).toBe('verified');
+    return Promise.allSettled([
+      owner.resolveFreshJoinAccount(trx, { proofId: verified.proof.id }),
+      owner.resolveFreshJoinAccount(trx, { proofId: verified.proof.id }),
+    ]);
+  });
+  expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+  expect(results.find(result => result.status === 'fulfilled').value.userId).toBe(account.userId);
+  expect(results.find(result => result.status === 'rejected').reason).toMatchObject({ code: 'IDENTITY_FRESH_PROOF_REQUIRED' });
 });
 
 test('a blocked registry owner cannot create a replacement account through a join proof', async () => {
