@@ -1,10 +1,20 @@
 'use strict';
 
 const emailValue = require('../src/api/auth/join-identity-internal/contact-value');
+const createProofCrypto = require('../src/api/auth/join-identity-internal/proof-crypto');
 
 test('email raw text remains exact while delivery normalization is separate', () => {
   const rawValue = '  First.Last+Garden@Example.Co.Uk  ';
-  expect(emailValue(rawValue)).toEqual({ rawValue, deliveryValue: 'first.last+garden@example.co.uk' });
+  expect(emailValue(rawValue)).toEqual({ rawValue, deliveryValue: 'First.Last+Garden@example.co.uk' });
+});
+
+test('email identity preserves local case, dots and plus aliases while folding only domain case', () => {
+  const tools = createProofCrypto('a'.repeat(64));
+  const destination = raw => tools.destinationKey('email', emailValue(raw).deliveryValue);
+  expect(destination('Person@EXAMPLE.COM')).toBe(destination('Person@example.com'));
+  expect(destination('Person@example.com')).not.toBe(destination('person@example.com'));
+  expect(destination('First.Last@example.com')).not.toBe(destination('FirstLast@example.com'));
+  expect(destination('Person+garden@example.com')).not.toBe(destination('Person@example.com'));
 });
 
 test('a320character raw value is preserved without truncating a valid delivery address', () => {

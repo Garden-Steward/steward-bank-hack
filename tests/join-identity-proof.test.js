@@ -68,7 +68,7 @@ test('issue commits exact raw values and sealed payload without sending until a 
   expect(inbox).toEqual([]);
   const proof = await savedProof(result);
   expect(proof.rawValue).toBe(command.rawValue);
-  expect(proof.deliveryValue).toBe(command.rawValue.trim().toLowerCase());
+  expect(proof.deliveryValue).toBe(command.rawValue.trim().replace('@EXAMPLE.COM', '@example.com'));
   expect(proof.sealedPayload).toMatch(/^v1\./);
   expect(JSON.stringify(result.public)).not.toContain(command.rawValue);
   expect(JSON.stringify(result.public)).not.toContain(command.browserSecret);
@@ -80,6 +80,16 @@ test('issue commits exact raw values and sealed payload without sending until a 
   expect((await savedProof(result)).sendState).toBe('simulated');
   expect((await consume(submission(command, result, code(inbox[0])))).kind).toBe('verified');
   expect((await consume(submission(command, result, code(inbox[0])))).kind).toBe('invalid_proof');
+});
+
+test('accepted request receipts retain their replay window for seven days', async () => {
+  const before = Date.now();
+  const result = await issue(await fixture());
+  const after = Date.now();
+  const receipt = await requestQuery().findOne({ where: { id: result.delivery.requestReceiptId } });
+  const retention = 7 * 24 * 60 * 60 * 1000;
+  expect(new Date(receipt.expiresAt).getTime()).toBeGreaterThanOrEqual(before + retention);
+  expect(new Date(receipt.expiresAt).getTime()).toBeLessThanOrEqual(after + retention);
 });
 
 test('admitted UUID replay is stable across object key order and rejects changed input', async () => {

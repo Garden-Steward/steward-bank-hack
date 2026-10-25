@@ -5,7 +5,8 @@ const createProofCrypto = require('../join-identity-internal/proof-crypto');
 const emailValue = require('../join-identity-internal/contact-value');
 
 const TTL = 10 * 60 * 1000;
-const RETENTION = 24 * 60 * 60 * 1000;
+const DAY = 24 * 60 * 60 * 1000;
+const REQUEST_RETENTION = 7 * DAY;
 const PURPOSES = new Set(['join_identity', 'email_login', 'profile_email']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -43,6 +44,25 @@ module.exports = ({ strapi }) => {
     if (client === 'pg' || client === 'postgres') query.forUpdate();
     return query;
   };
+  function databaseNow(trx) {
+    const client = strapi.db.connection.client.config.client;
+    if (client === 'pg' || client === 'postgres') return trx.raw('clock_timestamp()');
+    return trx.raw("(julianday('now') - 2440587.5) * 86400000");
+  }
+  function liveIntent(trx, query) {
+    const proofs = table('contact-proof');
+    const intents = table('join-intent');
+    return query.where(function () {
+      this.whereNull(proofs + '.intent_id').orWhereExists(function () {
+        this.select(trx.raw('1')).from(intents)
+          .whereRaw('?? = ??', [intents + '.id', proofs + '.intent_id'])
+          .where(intents + '.state', 'pending').where(intents + '.expires_at', '>', databaseNow(trx));
+      });
+    });
+  }
+  function liveProof(trx, query) {
+    return liveIntent(trx, query).where(table('contact-proof') + '.expires_at', '>', databaseNow(trx));
+  }
   function requireTransaction(trx) {
     if (!transactions.has(trx)) fail('IDENTITY_TRANSACTION_REQUIRED');
   }
@@ -104,7 +124,7 @@ module.exports = ({ strapi }) => {
       ['rate_browser_key', descriptor.browserKey, 10, 20],
       ['rate_network_key', networkKey, 500, 2000],
     ]) {
-      for (const [window, maximum] of [[3600000, hourly], [RETENTION, daily]]) {
+      for (const [window, maximum] of [[3600000, hourly], [DAY, daily]]) {
         const row = await trx(table('participation-request')).where(column, value).where('created_at', '>=', new Date(Date.now() - window)).count('* as count').first();
         if (Number(row.count) >= maximum) throw new AdmissionRejected('IDENTITY_RATE_LIMITED');
       }
@@ -124,7 +144,7 @@ module.exports = ({ strapi }) => {
     const saved = await strapi.db.query('api::participation.participation-request').create({ data: {
       actorOrBrowserScope: descriptor.scope, operation: descriptor.operation, requestId: descriptor.requestId, requestHmac: descriptor.requestHmac,
       safeResultJson: { proofId: proof.id, proofReceiptId: proof.receiptId, generation: proof.generation, expiresAt: proof.expiresAt, scopeReceiptId },
-      expiresAt: new Date(Date.now() + RETENTION).toISOString(), rateDestinationKey: budget.destinationKey, rateBrowserKey: budget.browserKey, rateNetworkKey: budget.networkKey,
+      expiresAt: new Date(Date.now() + REQUEST_RETENTION).toISOString(), rateDestinationKey: budget.destinationKey, rateBrowserKey: budget.browserKey, rateNetworkKey: budget.networkKey,
     } });
     return saved.id;
   }
@@ -244,7 +264,7 @@ module.exports = ({ strapi }) => {
         sealed_payload: cryptography().seal(context, proof.delivery_value, code),
       };
       if (proof.purpose === 'email_login' && !proof.actor_id) data.sealed_payload = null;
-      const changed = await trx(table('contact-proof')).where({ id: proof.id, generation: proof.generation, consumed_at: null, superseded_at: null }).update(data);
+      const changed = await liveIntent(trx, trx(table('contact-proof')).where({ id: proof.id, generation: proof.generation, consumed_at: null, superseded_at: null })).update(data);
       if (changed !== 1) fail('IDENTITY_PROOF_CHANGED');
       let scopeReceiptId = null;
       if (proof.intent_id) scopeReceiptId = (await trx(table('join-intent')).where({ id: proof.intent_id }).first()).receipt_id;
@@ -261,10 +281,10 @@ module.exports = ({ strapi }) => {
       if (proof.purpose === 'profile_email' && !(await activeUser(trx, proof.actor_id))) return { kind: 'invalid_proof' };
       if (proof.purpose === 'email_login' && (!proof.actor_id || (await loginActor(trx, proof.destination_key)) !== proof.actor_id)) return { kind: 'invalid_proof' };
       if (!cryptography().matchesCode(proofContext(proof), submission.code)) {
-        await trx(table('contact-proof')).where({ id: proof.id, generation: proof.generation, attempts: proof.attempts, consumed_at: null }).update({ attempts: proof.attempts + 1, updated_at: new Date() });
+        await liveProof(trx, trx(table('contact-proof')).where({ id: proof.id, generation: proof.generation, attempts: proof.attempts, consumed_at: null, superseded_at: null })).update({ attempts: proof.attempts + 1, updated_at: new Date() });
         return { kind: 'invalid_proof' };
       }
-      const changed = await trx(table('contact-proof')).where({ id: proof.id, generation: proof.generation, consumed_at: null, superseded_at: null }).update({ consumed_at: new Date(), sealed_payload: null, updated_at: new Date() });
+      const changed = await liveProof(trx, trx(table('contact-proof')).where({ id: proof.id, generation: proof.generation, consumed_at: null, superseded_at: null })).update({ consumed_at: new Date(), sealed_payload: null, updated_at: new Date() });
       if (changed !== 1) return { kind: 'invalid_proof' };
       return { kind: 'verified', proof: { id: proof.id, receiptId: proof.receipt_id, purpose: proof.purpose, actorId: proof.actor_id, intentId: proof.intent_id, rawValue: proof.raw_value, deliveryValue: proof.delivery_value, destinationKey: proof.destination_key, derivationVersion: proof.derivation_version } };
     },
@@ -281,7 +301,7 @@ module.exports = ({ strapi }) => {
         if (proof.actor_id && !(await activeUser(trx, proof.actor_id))) return null;
         if (proof.purpose === 'email_login' && (await loginActor(trx, proof.destination_key)) !== proof.actor_id) return null;
         const attemptId = crypto.randomUUID();
-        const changed = await trx(table('contact-proof')).where({ id: proof.id, generation: proof.generation, send_state: 'pending', attempt_id: null, consumed_at: null, superseded_at: null }).update({ attempt_id: attemptId, send_state: 'queued', sealed_payload: null, updated_at: new Date() });
+        const changed = await liveProof(trx, trx(table('contact-proof')).where({ id: proof.id, generation: proof.generation, send_state: 'pending', attempt_id: null, consumed_at: null, superseded_at: null })).update({ attempt_id: attemptId, send_state: 'queued', sealed_payload: null, updated_at: new Date() });
         if (changed !== 1) return null;
         return { proof, attemptId };
       });

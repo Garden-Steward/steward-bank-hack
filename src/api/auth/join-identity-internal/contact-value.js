@@ -9,8 +9,10 @@ module.exports = function emailValue(rawValue) {
     throw error;
   };
   if (typeof rawValue !== 'string' || !rawValue.length || rawValue.length > 320 || /[\r\n\0]/.test(rawValue)) invalid();
-  const deliveryValue = rawValue.trim().toLowerCase();
-  const local = deliveryValue.split('@')[0];
+  const trimmed = rawValue.trim();
+  const separator = trimmed.lastIndexOf('@');
+  const local = trimmed.slice(0, separator);
+  const deliveryValue = local + '@' + trimmed.slice(separator + 1).toLowerCase();
   if (!EMAIL.test(deliveryValue) || local.length > 64 || local.startsWith('.') || local.endsWith('.') || local.includes('..')) invalid();
   return { rawValue, deliveryValue };
 };
