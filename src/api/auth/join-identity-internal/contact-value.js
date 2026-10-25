@@ -14,6 +14,6 @@ module.exports = function emailValue(rawValue) {
   if (separator < 1) invalid();
   const local = trimmed.slice(0, separator);
   const deliveryValue = local + '@' + trimmed.slice(separator + 1).toLowerCase();
-  if (!EMAIL.test(deliveryValue) || local.length > 64 || local.startsWith('.') || local.endsWith('.') || local.includes('..')) invalid();
+  if (!EMAIL.test(deliveryValue) || deliveryValue.length > 254 || local.length > 64 || local.startsWith('.') || local.endsWith('.') || local.includes('..')) invalid();
   return { rawValue, deliveryValue };
 };

@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const createProofCrypto = require('../join-identity-internal/proof-crypto');
 const emailValue = require('../join-identity-internal/contact-value');
+const createAccounts = require('../join-identity-internal/accounts');
 
 const TTL = 10 * 60 * 1000;
 const DAY = 24 * 60 * 60 * 1000;
@@ -31,7 +32,8 @@ function canonical(value) {
 }
 
 module.exports = ({ strapi }) => {
-  const transactions = new WeakSet();
+  const transactions = new WeakMap();
+  const accounts = createAccounts({ strapi, databaseNow });
   let tools;
   const cryptography = () => {
     if (!tools) tools = createProofCrypto(process.env.PARTICIPATION_IDENTITY_KEY);
@@ -94,7 +96,7 @@ module.exports = ({ strapi }) => {
         if (client === 'pg' || client === 'postgres') await trx.raw("SELECT pg_advisory_xact_lock(hashtext('garden-steward-identity-v1'))");
         else if (!['sqlite', 'sqlite3', 'better-sqlite3'].includes(client)) fail('IDENTITY_DATABASE_UNSUPPORTED');
         await ensureKeyState(trx);
-        transactions.add(trx);
+        transactions.set(trx, new Set());
         try { return await operation(trx); } finally { transactions.delete(trx); }
       });
       const completed = await completion;
@@ -291,7 +293,24 @@ module.exports = ({ strapi }) => {
       }
       const changed = await liveProof(trx, trx(table('contact-proof')).where({ id: proof.id, generation: proof.generation, consumed_at: null, superseded_at: null })).update({ consumed_at: new Date(), sealed_payload: null, updated_at: new Date() });
       if (changed !== 1) return { kind: 'invalid_proof' };
+      transactions.get(trx).add(proof.id);
       return { kind: 'verified', proof: { id: proof.id, receiptId: proof.receipt_id, purpose: proof.purpose, actorId: proof.actor_id, intentId: proof.intent_id, rawValue: proof.raw_value, deliveryValue: proof.delivery_value, destinationKey: proof.destination_key, derivationVersion: proof.derivation_version } };
+    },
+    async resolveFreshJoinAccount(trx, { proofId }) {
+      requireTransaction(trx);
+      if (!transactions.get(trx).has(proofId)) fail('IDENTITY_FRESH_PROOF_REQUIRED');
+      const proof = await lockProof(trx, { id: proofId });
+      if (!proof || proof.purpose !== 'join_identity' || !proof.consumed_at || proof.superseded_at) fail('IDENTITY_PROOF_UNAVAILABLE');
+      const intent = await trx(table('join-intent')).where({ id: proof.intent_id, state: 'pending' }).first();
+      if (!intent) fail('IDENTITY_SCOPE_UNAVAILABLE');
+      const result = await accounts.fresh(trx, proof, intent);
+      transactions.get(trx).delete(proofId);
+      return result;
+    },
+    async resumeJoinAccount(trx, { intentId, actorId, browserSecret }) {
+      requireTransaction(trx);
+      if (!Number.isSafeInteger(intentId) || intentId < 1 || !Number.isSafeInteger(actorId) || actorId < 1) fail('IDENTITY_INVALID_ACTOR');
+      return accounts.resume(trx, { intentId, actorId, browserKey: cryptography().browserHash(browserSecret) });
     },
     async deliverEmailProof(requestReceiptId) {
       if (!Number.isSafeInteger(requestReceiptId) || requestReceiptId < 1) fail('IDENTITY_INVALID_REQUEST');
