@@ -1,0 +1,13 @@
+# Event registration and private profiles
+
+The participation owner submits a real future public event join, verifies its browser-bound email proof, resolves its account, stores the event snapshot and optionally saves a reusable profile. Required name, email and phone stay exactly as typed. Phone collection creates no SMS permission. Account newsletter enrollment uses its actual create-only owner and retains opt-outs.
+
+The service's original storage readiness state remains intact. Mutations run inside the identity owner's actual outer transaction. The published event and garden are locked; the final RSVP update uses database wall time and published-state predicates. The permanent event/user key prevents duplicate participation. A profile version conflict preserves the valid RSVP and event-only snapshot. Access text never enters the reusable profile or public receipt.
+
+Accepted commands use scoped UUID/HMAC receipts for seven days. Safe cache data contains no JWT or raw draft. Failed verification caches only an admitted guess, so further invalid or expired attempts do not grow the ledger after the five-guess cap. Fresh guest completion returns a private session actor after actual commit, and the controller issues one minimal session. Exact replay returns only the current own receipt. Existing legacy accounts require their original sign-in and browser-bound resume.
+
+The options owner uses real published garden/interest document identities plus stable skill, learning, availability and task choices from the approved artifact. Boundary validation rejects unknown fields and IDs, preserves raw strings and enforces16KiB. Raw phone accepts common international formatting with7–15 digits. Delivery validation and phone verification remain separate.
+
+Custom routes are disabled unless `PARTICIPATION_ENABLED=true`. They authenticate self operations with a freshly validated JWT actor, set no-store, omit raw input from logs and construct exact responses. The new API includes options, join submission, intent verification/resend/resume, self profile read/write, own event receipt and paginated own participation. Hidden events are404 and visible unavailable events409. It grants no generic collection access.
+
+This source checkpoint still requires email login/recovery, paired legacy registration/contact and RSVP writer migration, canonical confirmed counts/filtering, full PostgreSQL verification and browser/UI integration before activation. QR, consent/STOP/follow-up and newsletter publication remain separate required work. No new runtime, live provider, deployment or merge is enabled by this checkpoint.

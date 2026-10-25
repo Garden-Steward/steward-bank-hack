@@ -107,10 +107,11 @@ module.exports = ({ strapi }) => {
       throw error;
     }
   }
-  function identity(command, operation, input) {
+  function identity(command, operation, input, browserBound = true) {
     if (typeof command.requestId !== 'string' || !UUID.test(command.requestId)) fail('IDENTITY_INVALID_REQUEST');
     if (command.actorId !== undefined && command.actorId !== null && (!Number.isSafeInteger(command.actorId) || command.actorId < 1)) fail('IDENTITY_INVALID_ACTOR');
-    const browserKey = cryptography().browserHash(command.browserSecret);
+    let browserKey = null;
+    if (browserBound || !command.actorId) browserKey = cryptography().browserHash(command.browserSecret);
     let scope = 'identity:browser:' + browserKey;
     if (command.actorId) scope = 'identity:actor:' + command.actorId;
     return {
@@ -207,6 +208,22 @@ module.exports = ({ strapi }) => {
   }
   return {
     withTransaction,
+    describeParticipationRequest(trx, command) {
+      requireTransaction(trx);
+      if (typeof command.operation !== 'string' || !command.operation.startsWith('participation:')) fail('IDENTITY_INVALID_REQUEST');
+      let browserBound = true;
+      if (command.actorId && command.browserSecret === undefined) browserBound = false;
+      return identity(command, command.operation, command.input, browserBound);
+    },
+    async ownedEmail(trx, { actorId, rawValue }) {
+      requireTransaction(trx);
+      if (!Number.isSafeInteger(actorId) || actorId < 1 || !(await activeUser(trx, actorId))) fail('IDENTITY_ACTOR_UNAVAILABLE');
+      const email = emailValue(rawValue);
+      const destinationKey = cryptography().destinationKey('email', email.deliveryValue);
+      const contact = await lock(trx(table('verified-contact')).where({ user_id: actorId, channel: 'email', destination_key: destinationKey, derivation_version: 1, revoked_at: null })).first();
+      if (!contact) return null;
+      return { contactId: contact.id, proofId: contact.proof_id };
+    },
     async peekEmailProofRequest(trx, command) {
       requireTransaction(trx);
       if (!PURPOSES.has(command.purpose)) fail('IDENTITY_INVALID_PURPOSE');
