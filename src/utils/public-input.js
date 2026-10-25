@@ -59,7 +59,7 @@ function slugFilters(strapi, uid) {
   let position = 'instr';
   if (postgres) position = 'strpos';
   for (const character of forbiddenSlugCharacters) {
-    // PostgreSQL text cannot contain NUL; SQLite needs instr because LIKE truncates at NUL.
+    // comment-ok: PostgreSQL text cannot contain NUL; SQLite needs instr because LIKE truncates at NUL.
     if (postgres && character === '\u0000') continue;
     query.whereRaw(position + '(??, ?) = 0', [column, character]);
   }

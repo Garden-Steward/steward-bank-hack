@@ -50,7 +50,7 @@ beforeAll(async () => {
   ]) {
     const created = await strapi.documents(eventUid).create({ status: 'published', data: { startDatetime: new Date(Date.now() + 95000000 + sequence++ * 3600000).toISOString(), accessibility: 'Public', ...data } });
     if (data.garden === draftGarden.documentId) {
-      // Publishing drops unpublished relations; retain a legacy draft link to test the boundary.
+      // comment-ok: Publishing drops unpublished relations; retain a legacy draft link to test the boundary.
       await strapi.db.query(eventUid).update({ where: { id: created.id }, data: { garden: draftGarden.id } });
       const stored = await strapi.db.query(eventUid).findOne({ where: { id: created.id }, populate: ['garden'] });
       expect(stored.garden.publishedAt).toBeNull();
