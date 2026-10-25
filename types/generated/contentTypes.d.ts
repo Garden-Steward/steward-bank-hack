@@ -591,6 +591,7 @@ export interface ApiGardenTaskGardenTask extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     current_section: Schema.Attribute.RichText;
     deferred_until: Schema.Attribute.DateTime;
+    dropped: Schema.Attribute.JSON;
     garden: Schema.Attribute.Relation<'oneToOne', 'api::garden.garden'>;
     instruction: Schema.Attribute.Relation<
       'oneToOne',
@@ -613,6 +614,12 @@ export interface ApiGardenTaskGardenTask extends Struct.CollectionTypeSchema {
     recurring_task: Schema.Attribute.Relation<
       'oneToOne',
       'api::recurring-task.recurring-task'
+    >;
+    reserve_offer_at: Schema.Attribute.DateTime;
+    reserve_offer_user: Schema.Attribute.Integer;
+    reserves: Schema.Attribute.Relation<
+      'oneToMany',
+      'plugin::users-permissions.user'
     >;
     resources_section: Schema.Attribute.RichText;
     sort_order: Schema.Attribute.Integer;

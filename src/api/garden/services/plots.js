@@ -69,6 +69,8 @@ module.exports = ({ strapi }) => ({
           ...Object.fromEntries(PLANT_FIELDS.map((f) => [f, p.plant[f] ?? null])),
           clipart: p.plant.clipart ? { url: p.plant.clipart.url } : null,
           images: (p.plant.images || []).slice(0, 1).map((img) => ({ url: img.url, formats: img.formats || null })),
+          // What the plant gives; Explore adds these up across the garden.
+          Benefits: (p.plant.Benefits || []).map((b) => ({ title: b.title, potency: b.potency })),
         }
         : null,
     }));
@@ -86,7 +88,7 @@ module.exports = ({ strapi }) => ({
       populate: {
         plots: {
           populate: {
-            plant: { select: PLANT_FIELDS, populate: { clipart: true, images: true } },
+            plant: { select: PLANT_FIELDS, populate: { clipart: true, images: true, Benefits: true } },
           },
         },
       },
