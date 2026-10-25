@@ -519,10 +519,19 @@ test('linked project events use canonical counts and project interest never crea
   const role = await strapi.db.query('plugin::users-permissions.role').findOne({ where: { type: 'authenticated' } });
   const other = await users().create({ data: { username: uuid(), provider: 'local', role: role.id, blocked: false } });
   const otherToken = await strapi.plugin('users-permissions').service('jwt').issue({ id: other.id });
+  await strapi.db.query('api::project.project').update({ where: { id: project.id }, data: { interested: [] } });
   await Promise.all([
     http.post('/api/projects/' + project.id + '/express-interest').auth(token, { type: 'bearer' }).send({}).expect(200),
     http.post('/api/projects/' + project.id + '/express-interest').auth(otherToken, { type: 'bearer' }).send({}).expect(200),
   ]);
   const saved = await strapi.db.query('api::project.project').findOne({ where: { id: project.id }, populate: ['interested'] });
   expect(saved.interested.map(user => user.id).sort()).toEqual([registered.sessionActorId, other.id].sort());
+  const hidden = await event({ accessibility: 'Garden Members' });
+  await strapi.db.query('api::project.project').update({ where: { id: project.id }, data: { related_events: [item.selected.id, hidden.id] } });
+  const privateLinked = await http.get('/api/projects/' + project.documentId + '?populate[related_events]=true').auth(token, { type: 'bearer' }).expect(200);
+  expect(privateLinked.body.data.related_events.map(event => event.documentId)).toEqual([item.selected.documentId]);
+  const gardenDraft = await strapi.db.query('api::garden.garden').findOne({ where: { documentId: garden.documentId, publishedAt: null } });
+  await strapi.db.query('api::garden.garden').update({ where: { id: gardenDraft.id }, data: { managers: [registered.sessionActorId] } });
+  const managerLinked = await http.get('/api/projects/' + project.documentId + '?populate[related_events]=true').auth(token, { type: 'bearer' }).expect(200);
+  expect(managerLinked.body.data.related_events.map(event => event.documentId).sort()).toEqual([item.selected.documentId, hidden.documentId].sort());
 });

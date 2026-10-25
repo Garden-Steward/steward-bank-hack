@@ -102,15 +102,42 @@ module.exports = ({ strapi }) => {
       return result;
     });
   }
-  return {
-    populate, prepareQuery, project, rejectNestedConfirmed,
-    async visibility(actorId) {
+  async function visibility(actorId) {
       const publicEvents = { publishedAt: { $notNull: true }, accessibility: 'Public', garden: { publishedAt: { $notNull: true } } };
       if (!actorId) return publicEvents;
       const user = await strapi.db.query('plugin::users-permissions.user').findOne({ where: { id: actorId }, populate: ['role'] });
       if (user?.role?.type === 'administrator') return {};
       const gardens = await strapi.db.query('api::garden.garden').findMany({ where: { managers: { id: actorId } }, select: ['documentId'] });
       return { $or: [publicEvents, { garden: { documentId: { $in: [...new Set(gardens.map(row => row.documentId))] } } }] };
+  }
+  return {
+    populate, prepareQuery, project, rejectNestedConfirmed, visibility,
+    async visiblePopulate(uid, value, actorId) {
+      const filter = await visibility(actorId);
+      function walk(modelUid, entries) {
+        const result = {};
+        for (const [name, options] of Object.entries(entries)) {
+          const attribute = strapi.getModel(modelUid).attributes[name];
+          const target = attribute.target || attribute.component;
+          let clean = options;
+          if (options && typeof options === 'object') clean = { ...options };
+          if (target === EVENT && options) {
+            if (typeof clean !== 'object') clean = {};
+            clean.filters = { $and: [clean.filters || {}, filter] };
+          }
+          if (target && clean?.populate) clean.populate = walk(target, clean.populate);
+          if (clean?.on) {
+            clean.on = { ...clean.on };
+            for (const [component, fields] of Object.entries(clean.on)) {
+              clean.on[component] = { ...fields };
+              if (fields.populate) clean.on[component].populate = walk(component, fields.populate);
+            }
+          }
+          result[name] = clean;
+        }
+        return result;
+      }
+      return walk(uid, populate(uid, value));
     },
     async optionalActor(ctx) {
       try { return await createHttp({ strapi }).actor(ctx); } catch { return null; }

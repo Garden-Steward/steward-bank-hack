@@ -208,6 +208,10 @@ module.exports = {
     strapi.documents.use(async (context, next) => {
       if (process.env.PARTICIPATION_ENABLED !== 'true') return next();
       const participation = strapi.service('api::participation.participation');
+      const request = strapi.requestContext.get();
+      if (request && ['api::volunteer-day.volunteer-day', 'api::project.project'].includes(context.uid) && ['findMany', 'findOne'].includes(context.action) && context.params.populate) {
+        context.params.populate = await participation.visibleLegacyPopulate(context.uid, context.params.populate, await participation.optionalLegacyActor(request));
+      }
       if (['api::volunteer-day.volunteer-day', 'api::project.project'].includes(context.uid) && ['findMany', 'findOne', 'count'].includes(context.action)) {
         participation.assertLegacyFilters(context.uid, context.params.filters);
       }

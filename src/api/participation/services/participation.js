@@ -167,6 +167,7 @@ module.exports = ({ strapi }) => {
     stripConfirmedPopulate: (uid, params) => legacy.populate(uid, params),
     assertLegacyFilters: (uid, filters) => legacy.rejectNestedConfirmed(uid, filters),
     legacyVisibility: actorId => legacy.visibility(actorId),
+    visibleLegacyPopulate: (uid, populate, actorId) => legacy.visiblePopulate(uid, populate, actorId),
     optionalLegacyActor: ctx => legacy.optionalActor(ctx),
     options() { assertStorageReady(); return options.read(); },
     async submit(actorId, eventDocumentId, body, socketPeer) {
