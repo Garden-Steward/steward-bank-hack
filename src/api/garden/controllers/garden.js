@@ -88,6 +88,9 @@ const LIST_USER_FIELDS = ['id', 'documentId', 'username', 'firstName', 'lastName
 const PAGE_USER_FIELDS = [...LIST_USER_FIELDS, 'bio', 'color', 'paused', 'provider', 'createdAt', 'updatedAt'];
 // Contact details, only for the garden's managers and administrators.
 const CONTACT_USER_FIELDS = ['email', 'phoneNumber'];
+// Onboarding answers (work, skills, availability, benefits such as CalFresh hours) are
+// as private as contact details, so they go to the same managers only.
+const ONBOARDING_USER_FIELDS = ['employer', 'jobTitle', 'linkedinUrl', 'skills', 'availability', 'frequency', 'volunteerBenefits', 'goals'];
 
 function pick(obj, fields) {
   const out = {};
@@ -97,7 +100,7 @@ function pick(obj, fields) {
 
 function toPageUser(u, withContact) {
   if (!u || typeof u !== 'object') return u;
-  const out = pick(u, withContact ? [...PAGE_USER_FIELDS, ...CONTACT_USER_FIELDS] : PAGE_USER_FIELDS);
+  const out = pick(u, withContact ? [...PAGE_USER_FIELDS, ...CONTACT_USER_FIELDS, ...ONBOARDING_USER_FIELDS] : PAGE_USER_FIELDS);
   if (u.role && typeof u.role === 'object') out.role = pick(u.role, ['id', 'name', 'type']);
   if (Array.isArray(u.u_g_interests)) {
     out.u_g_interests = u.u_g_interests.map((ugi) => ({
