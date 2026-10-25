@@ -197,3 +197,33 @@ test('changed disclosure refuses enrollment and a320character raw email round tr
   await enroll(account, contact);
   expect((await query('newsletter-subscription').findOne({ where: { userId: account.id } })).emailRaw).toBe(rawValue);
 });
+
+test('an actorless join proof needs the exact bound intent and a consistent legacy actor', async () => {
+  const account = await user();
+  const { contact, proof } = await email(account, { purpose: 'join_identity', actorId: null });
+  const foreign = await user();
+  await identity('join-intent').update({ where: { id: proof.intentId }, data: { boundActorId: null } });
+  await expect(enroll(account, contact)).rejects.toMatchObject({ code: 'NEWSLETTER_EMAIL_UNVERIFIED' });
+  await identity('join-intent').update({ where: { id: proof.intentId }, data: { boundActorId: account.id, boundLegacyUserId: foreign.id } });
+  await expect(enroll(account, contact)).rejects.toMatchObject({ code: 'NEWSLETTER_EMAIL_UNVERIFIED' });
+  await identity('join-intent').update({ where: { id: proof.intentId }, data: { boundLegacyUserId: account.id } });
+  expect((await enroll(account, contact)).state).toBe('subscribed');
+});
+
+test.each(['superseded', 'destination', 'version'])('%s proof mismatch refuses account enrollment', async mismatch => {
+  const account = await user();
+  const { contact, proof } = await email(account);
+  const changes = {};
+  if (mismatch === 'superseded') changes.supersededAt = new Date().toISOString();
+  if (mismatch === 'destination') changes.destinationKey = destinationKey();
+  if (mismatch === 'version') changes.derivationVersion = 2;
+  await identity('contact-proof').update({ where: { id: proof.id }, data: changes });
+  await expect(enroll(account, contact)).rejects.toMatchObject({ code: 'NEWSLETTER_EMAIL_UNVERIFIED' });
+  expect(await query('newsletter-subscription').count({ where: { userId: account.id } })).toBe(0);
+});
+
+test('expiry of an already consumed code does not revoke its verified email ownership', async () => {
+  const account = await user();
+  const { contact } = await email(account, { consumedAt: new Date(Date.now() - 120000).toISOString(), expiresAt: new Date(Date.now() - 60000).toISOString() });
+  expect((await enroll(account, contact)).state).toBe('subscribed');
+});
