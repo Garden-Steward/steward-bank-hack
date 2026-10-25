@@ -1,0 +1,179 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_participations",
+  "info": {
+    "singularName": "participation",
+    "pluralName": "participations",
+    "displayName": "Participation"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "receiptId": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      }
+    },
+    "eventDocumentId": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "gardenDocumentId": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "userId": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "rsvpState": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "none",
+        "confirmed",
+        "cancelled"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": "none"
+    },
+    "rsvpedAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "joinSnapshotJson": {
+      "type": "json",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "accessRequestRaw": {
+      "type": "text",
+      "private": true,
+      "maxLength": 2000
+    },
+    "checkedInAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "tokenGeneration": {
+      "type": "integer",
+      "private": true
+    },
+    "followupState": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "not_planned",
+        "queued",
+        "preparing",
+        "dispatching",
+        "accepted",
+        "simulated",
+        "blocked",
+        "cancelled",
+        "unknown"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": "not_planned"
+    },
+    "dueAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "deadlineAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "followupConsentReceiptId": {
+      "type": "integer",
+      "private": true
+    },
+    "attemptId": {
+      "type": "string",
+      "private": true
+    },
+    "leaseUntil": {
+      "type": "datetime",
+      "private": true
+    },
+    "providerSid": {
+      "type": "string",
+      "private": true
+    },
+    "acceptedAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "version": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": 1
+    }
+  },
+  "indexes": [
+    {
+      "name": "gs_participation_pair_unique",
+      "columns": [
+        "event_document_id",
+        "user_id"
+      ],
+      "type": "unique"
+    },
+    {
+      "name": "gs_participation_due_idx",
+      "columns": [
+        "followup_state",
+        "due_at",
+        "id"
+      ]
+    },
+    {
+      "name": "gs_participation_actor_idx",
+      "columns": [
+        "user_id",
+        "updated_at"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_newsletter_preference_events",
+  "info": {
+    "singularName": "newsletter-preference-event",
+    "pluralName": "newsletter-preference-events",
+    "displayName": "Newsletter Preference Event"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "sourceKey": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      },
+      "unique": true,
+      "maxLength": 160
+    },
+    "userId": {
+      "type": "integer",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "min": 1
+    },
+    "subscriptionReceiptId": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "action": {
+      "type": "enumeration",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "enum": [
+        "auto_enroll",
+        "unsubscribe",
+        "resubscribe",
+        "contact_change"
+      ]
+    },
+    "resultingPreference": {
+      "type": "enumeration",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "enum": [
+        "subscribed",
+        "unsubscribed"
+      ]
+    },
+    "appliedRevision": {
+      "type": "integer",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "min": 1
+    },
+    "textVersion": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "textHash": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "maxLength": 64
+    },
+    "recordedAt": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "requestDigest": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "maxLength": 64
+    }
+  },
+  "indexes": [
+    {
+      "name": "gs_newsletter_preference_actor_idx",
+      "columns": [
+        "user_id",
+        "recorded_at"
+      ]
+    }
+  ]
+}

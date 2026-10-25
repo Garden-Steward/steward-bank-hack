@@ -179,6 +179,54 @@ module.exports = {
       strapi.log.error('[bootstrap] volunteer-day draft backfill failed:', err);
     }
 
+    const participationCutover = await strapi.store({ type: 'plugin', name: 'participation', key: 'cutover-v1' }).get();
+    if (participationCutover !== null && participationCutover !== undefined) {
+      if (participationCutover.version !== 1) throw new Error('Participation cutover state is invalid');
+      if (process.env.PARTICIPATION_ENABLED !== 'true') throw new Error('This database requires the verified participation owner to remain enabled');
+    }
+    await strapi.service('api::participation.participation').ensureStorage();
+
+    const guardLegacyEmail = (event, creating = false) => {
+      if (process.env.PARTICIPATION_ENABLED !== 'true') return;
+      if (strapi.service('api::auth.join-identity').legacyEmailWritePermitted()) return;
+      let rows = [event.params.data];
+      if (Array.isArray(event.params.data)) rows = event.params.data;
+      for (const data of rows) {
+        if (!data || !Object.hasOwn(data, 'email')) continue;
+        if (creating && (data.email === null || data.email === undefined)) continue;
+        const { errors } = require('@strapi/utils');
+        throw new errors.ValidationError('Use verified registration or your private profile to change contact details.');
+      }
+    };
+    strapi.db.lifecycles.subscribe({
+      models: ['plugin::users-permissions.user'],
+      beforeCreate: event => guardLegacyEmail(event, true),
+      beforeCreateMany: event => guardLegacyEmail(event, true),
+      beforeUpdate: event => guardLegacyEmail(event),
+      beforeUpdateMany: event => guardLegacyEmail(event),
+    });
+    strapi.documents.use(async (context, next) => {
+      if (process.env.PARTICIPATION_ENABLED !== 'true') return next();
+      const participation = strapi.service('api::participation.participation');
+      const request = strapi.requestContext.get();
+      if (request && ['api::volunteer-day.volunteer-day', 'api::project.project'].includes(context.uid) && ['findMany', 'findOne'].includes(context.action) && context.params.populate) {
+        context.params.populate = await participation.visibleLegacyPopulate(context.uid, context.params.populate, await participation.optionalLegacyActor(request));
+      }
+      if (['api::volunteer-day.volunteer-day', 'api::project.project'].includes(context.uid) && ['findMany', 'findOne', 'count'].includes(context.action)) {
+        participation.assertLegacyFilters(context.uid, context.params.filters);
+        participation.assertLegacySort(context.uid, context.params.sort);
+      }
+      if (context.uid === 'api::volunteer-day.volunteer-day') {
+        if (['create', 'update'].includes(context.action) && context.params.data && Object.hasOwn(context.params.data, 'confirmed')) {
+          const { errors } = require('@strapi/utils');
+          throw new errors.ValidationError('Use event registration to change RSVP state.');
+        }
+        if (['findMany', 'findOne'].includes(context.action) && context.params.populate) context.params.populate = participation.stripConfirmedPopulate(context.uid, context.params.populate);
+      }
+      if (context.uid === 'api::project.project' && ['findMany', 'findOne'].includes(context.action) && context.params.populate) context.params.populate = participation.stripConfirmedPopulate(context.uid, context.params.populate);
+      return next();
+    });
+
     // Ledger indexes (CREATE INDEX IF NOT EXISTS). Never blocks boot.
     try {
       await strapi.service('api::billing.usage').ensureIndexes();

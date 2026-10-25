@@ -1,0 +1,71 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_participation_photo_cards",
+  "info": {
+    "singularName": "participation-photo-card",
+    "pluralName": "participation-photo-cards",
+    "displayName": "Participation Photo Card"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "tokenHash": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      }
+    },
+    "participationId": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "approvedMediaId": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "approvedMediaVersion": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "expiresAt": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "revokedAt": {
+      "type": "datetime",
+      "private": true
+    }
+  },
+  "indexes": []
+}

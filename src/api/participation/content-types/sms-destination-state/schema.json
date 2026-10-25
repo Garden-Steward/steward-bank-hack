@@ -1,0 +1,47 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_sms_destination_states",
+  "info": {
+    "singularName": "sms-destination-state",
+    "pluralName": "sms-destination-states",
+    "displayName": "Sms Destination State"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "destinationKey": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      }
+    },
+    "stopEpoch": {
+      "type": "integer",
+      "private": true,
+      "min": 0,
+      "default": 0,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "stoppedAt": {
+      "type": "datetime",
+      "private": true
+    }
+  },
+  "indexes": []
+}
