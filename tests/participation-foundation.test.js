@@ -38,37 +38,37 @@ test('private native models load without draft/publish or generic public API rou
 
 test('the database rejects duplicate event/user participation and request keys', async () => {
   const row = await create('participation', participation());
-  await expect(copyNative('participation', row, { receipt_id: key() })).rejects.toThrow(/unique|duplicate/i);
+  await expect(copyNative('participation', row, { receipt_id: key() })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_UNIQUE' });
   const command = await create('participation-request', { actorOrBrowserScope: key(), operation: 'join', requestId: key(), requestHmac: key(), safeResultJson: { kind: 'confirmed' }, expiresAt: new Date(Date.now() + 60000).toISOString() });
-  await expect(copyNative('participation-request', command)).rejects.toThrow(/unique|duplicate/i);
+  await expect(copyNative('participation-request', command)).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_UNIQUE' });
 });
 
 test('the database rejects duplicate intent, proof receipt and profile keys', async () => {
   const intent = await create('join-intent', { receiptId: key(), eventDocumentId: key(), browserSecretHash: key(), requestId: key(), requestHmac: key(), draftJson: {}, expiresAt: new Date(Date.now() + 60000).toISOString() });
-  await expect(copyNative('join-intent', intent, { receipt_id: key() })).rejects.toThrow(/unique|duplicate/i);
+  await expect(copyNative('join-intent', intent, { receipt_id: key() })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_UNIQUE' });
   const proof = await create('contact-proof', { receiptId: key(), purpose: 'email_login', rawValue: 'synthetic@example.com', deliveryValue: 'synthetic@example.com', destinationKey: key(), browserSecretHash: key(), codeHmac: key(), expiresAt: new Date(Date.now() + 60000).toISOString() });
-  await expect(copyNative('contact-proof', proof)).rejects.toThrow(/unique|duplicate/i);
+  await expect(copyNative('contact-proof', proof)).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_UNIQUE' });
   const profile = await create('join-profile', { userId: 202, preferredNameRaw: '  Synthetic Person  ', emailRaw: 'synthetic@example.com', phoneRaw: ' (415) 555-0100 ', preferencesJson: {} });
-  await expect(copyNative('join-profile', profile)).rejects.toThrow(/unique|duplicate/i);
-  await expect(copyNative('join-profile', profile, { user_id: 203, phone_raw: null })).rejects.toThrow(/not.null/i);
+  await expect(copyNative('join-profile', profile)).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_UNIQUE' });
+  await expect(copyNative('join-profile', profile, { user_id: 203, phone_raw: null })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_NOTNULL' });
 });
 
 test('one active verified owner survives revocation history and rejects conflicting reactivation', async () => {
   const first = await create('verified-contact', { channel: 'email', destinationKey: key(), userId: 301, verifiedAt: new Date().toISOString() });
-  await expect(copyNative('verified-contact', first, { user_id: 302 })).rejects.toThrow(/unique|duplicate/i);
+  await expect(copyNative('verified-contact', first, { user_id: 302 })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_UNIQUE' });
   await strapi.db.query(uid('verified-contact')).update({ where: { id: first.id }, data: { revokedAt: new Date().toISOString() } });
   await copyNative('verified-contact', first, { user_id: 302, revoked_at: null });
-  await expect(strapi.db.connection(table('verified-contact')).where({ id: first.id }).update({ revoked_at: null })).rejects.toThrow(/unique|duplicate/i);
+  await expect(strapi.db.connection(table('verified-contact')).where({ id: first.id }).update({ revoked_at: null })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_UNIQUE' });
 });
 
 test('native state constraints reject malformed insertion and mutation', async () => {
   const row = await create('participation', participation());
-  await expect(copyNative('participation', row, { receipt_id: key(), event_document_id: key(), followup_state: 'queued' })).rejects.toThrow(/invariant|check constraint/i);
-  await expect(strapi.db.connection(table('participation')).where({ id: row.id }).update({ checked_in_at: new Date().toISOString() })).rejects.toThrow(/invariant|check constraint/i);
-  await expect(strapi.db.connection(table('participation')).where({ id: row.id }).update({ rsvped_at: null })).rejects.toThrow(/invariant|check constraint/i);
+  await expect(copyNative('participation', row, { receipt_id: key(), event_document_id: key(), followup_state: 'queued' })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await expect(strapi.db.connection(table('participation')).where({ id: row.id }).update({ checked_in_at: new Date().toISOString() })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await expect(strapi.db.connection(table('participation')).where({ id: row.id }).update({ rsvped_at: null })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
   const proof = await create('contact-proof', { receiptId: key(), purpose: 'email_login', rawValue: 'fixture@example.com', deliveryValue: 'fixture@example.com', destinationKey: key(), browserSecretHash: key(), codeHmac: key(), expiresAt: new Date(Date.now() + 60000).toISOString() });
-  await expect(strapi.db.connection(table('contact-proof')).where({ id: proof.id }).update({ attempts: 6 })).rejects.toThrow(/invariant|check constraint/i);
-  await expect(strapi.db.connection(table('contact-proof')).where({ id: proof.id }).update({ purpose: 'profile_phone' })).rejects.toThrow(/invariant|check constraint/i);
+  await expect(strapi.db.connection(table('contact-proof')).where({ id: proof.id }).update({ attempts: 6 })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await expect(strapi.db.connection(table('contact-proof')).where({ id: proof.id }).update({ purpose: 'profile_phone' })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
 });
 
 test('raw profile strings round trip unchanged including a320character email', async () => {
@@ -107,5 +107,5 @@ test('constraint definition drift refuses readiness and missing owned constraint
   await service.ensureStorage();
   service.assertStorageReady();
   expect(await connection('sqlite_master').where({ type: 'trigger', name: trigger }).first()).toBeTruthy();
-  await expect(connection(table('participation')).update({ rsvped_at: null })).rejects.toThrow(/invariant/i);
+  await expect(connection(table('participation')).update({ rsvped_at: null })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
 });
