@@ -71,6 +71,33 @@ test('native state constraints reject malformed insertion and mutation', async (
   await expect(strapi.db.connection(table('contact-proof')).where({ id: proof.id }).update({ purpose: 'profile_phone' })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
 });
 
+test('completed intents and accepted delivery require their completion evidence', async () => {
+  const intent = await create('join-intent', { receiptId: key(), eventDocumentId: key(), browserSecretHash: key(), requestId: key(), requestHmac: key(), draftJson: {}, expiresAt: new Date(Date.now() + 60000).toISOString() });
+  const connection = strapi.db.connection;
+  await expect(copyNative('join-intent', intent, { receipt_id: key(), request_id: key(), state: 'completed' })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await expect(connection(table('join-intent')).where({ id: intent.id }).update({ state: 'completed', participation_id: 1 })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await connection(table('join-intent')).where({ id: intent.id }).update({ state: 'completed', participation_id: 1, completed_at: Date.now() });
+  const row = await create('participation', participation());
+  const queued = { checked_in_at: Date.now(), token_generation: 1, due_at: Date.now() + 60000, deadline_at: Date.now() + 120000, followup_consent_receipt_id: 1, followup_state: 'queued' };
+  await connection(table('participation')).where({ id: row.id }).update(queued);
+  await expect(connection(table('participation')).where({ id: row.id }).update({ followup_state: 'accepted' })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await expect(connection(table('participation')).where({ id: row.id }).update({ followup_state: 'accepted', provider_sid: 'synthetic-provider-id' })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await connection(table('participation')).where({ id: row.id }).update({ followup_state: 'accepted', provider_sid: 'synthetic-provider-id', accepted_at: Date.now() });
+  const attempt = await create('participation-attempt', { attemptId: key(), participationId: row.id, sequence: 1, claimToken: key(), leaseUntil: new Date(Date.now() + 60000).toISOString(), requestDigest: key(), settingsVersion: 1, consentReceiptId: 1 });
+  await expect(connection(table('participation-attempt')).where({ id: attempt.id }).update({ state: 'accepted', provider_sid: 'synthetic-attempt-id' })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await connection(table('participation-attempt')).where({ id: attempt.id }).update({ state: 'accepted', provider_sid: 'synthetic-attempt-id', finished_at: Date.now() });
+});
+
+test('event windows and QR expiry reject inconsistent insertion and mutation', async () => {
+  const now = Date.now();
+  const setting = await create('event-participation-setting', { eventDocumentId: key(), gardenDocumentId: key(), opensAt: new Date(now).toISOString(), closesAt: new Date(now + 3600000).toISOString() });
+  const connection = strapi.db.connection;
+  await expect(copyNative('event-participation-setting', setting, { event_document_id: key(), closes_at: now })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await expect(connection(table('event-participation-setting')).where({ id: setting.id }).update({ qr_hash: key() })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await expect(connection(table('event-participation-setting')).where({ id: setting.id }).update({ qr_hash: key(), qr_expiry: now + 7200000 })).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_TRIGGER' });
+  await connection(table('event-participation-setting')).where({ id: setting.id }).update({ qr_hash: key(), qr_expiry: now + 1800000 });
+});
+
 test('raw profile strings round trip unchanged including a320character email', async () => {
   const email = ' '.repeat(66) + 'x'.repeat(64) + '@' + 'd'.repeat(62) + '.' + 'd'.repeat(62) + '.' + 'd'.repeat(59) + '.com';
   expect(email.length).toBe(320);

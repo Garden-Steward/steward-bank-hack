@@ -3,15 +3,21 @@
 const { ensureConstraints } = require('../participation-internal/constraints');
 
 module.exports = ({ strapi }) => {
-  let storageReady = false;
+  let state = { kind: 'unavailable' };
   return {
     async ensureStorage() {
-      storageReady = false;
-      await ensureConstraints(strapi);
-      storageReady = true;
+      if (state.kind === 'checking') return state.promise;
+      const promise = ensureConstraints(strapi).then(() => {
+        state = { kind: 'ready' };
+      }, error => {
+        state = { kind: 'unavailable' };
+        throw error;
+      });
+      state = { kind: 'checking', promise };
+      return promise;
     },
     assertStorageReady() {
-      if (!storageReady) throw new Error('Participation storage is unavailable');
+      if (state.kind !== 'ready') throw new Error('Participation storage is unavailable');
     },
   };
 };
