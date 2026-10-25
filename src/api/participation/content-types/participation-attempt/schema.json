@@ -1,0 +1,144 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_participation_attempts",
+  "info": {
+    "singularName": "participation-attempt",
+    "pluralName": "participation-attempts",
+    "displayName": "Participation Attempt"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "attemptId": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      }
+    },
+    "participationId": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "sequence": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "claimToken": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      }
+    },
+    "state": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "preparing",
+        "dispatching",
+        "accepted",
+        "simulated",
+        "rejected",
+        "unknown"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": "preparing"
+    },
+    "leaseUntil": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "startedAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "finishedAt": {
+      "type": "datetime",
+      "private": true
+    },
+    "providerSid": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "column": {
+        "unique": true
+      }
+    },
+    "requestDigest": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "settingsVersion": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "consentReceiptId": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    }
+  },
+  "indexes": [
+    {
+      "name": "gs_attempt_sequence_unique",
+      "columns": [
+        "participation_id",
+        "sequence"
+      ],
+      "type": "unique"
+    },
+    {
+      "name": "gs_attempt_recovery_idx",
+      "columns": [
+        "state",
+        "lease_until"
+      ]
+    }
+  ]
+}

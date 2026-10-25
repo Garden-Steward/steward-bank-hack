@@ -1,0 +1,87 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_join_profiles",
+  "info": {
+    "singularName": "join-profile",
+    "pluralName": "join-profiles",
+    "displayName": "Join Profile"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "userId": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "unique": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      }
+    },
+    "preferredNameRaw": {
+      "type": "string",
+      "private": true,
+      "maxLength": 120,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "emailRaw": {
+      "type": "text",
+      "private": true,
+      "maxLength": 320,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "phoneRaw": {
+      "type": "text",
+      "private": true,
+      "maxLength": 80,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "preferencesJson": {
+      "type": "json",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "emailProofId": {
+      "type": "integer",
+      "private": true
+    },
+    "phoneProofId": {
+      "type": "integer",
+      "private": true
+    },
+    "version": {
+      "type": "integer",
+      "private": true,
+      "min": 1,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": 1
+    }
+  },
+  "indexes": []
+}

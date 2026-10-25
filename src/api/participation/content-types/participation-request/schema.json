@@ -1,0 +1,81 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_participation_requests",
+  "info": {
+    "singularName": "participation-request",
+    "pluralName": "participation-requests",
+    "displayName": "Participation Request"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "actorOrBrowserScope": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "operation": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "requestId": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "requestHmac": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "safeResultJson": {
+      "type": "json",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "expiresAt": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    }
+  },
+  "indexes": [
+    {
+      "name": "gs_participation_request_unique",
+      "columns": [
+        "actor_or_browser_scope",
+        "operation",
+        "request_id"
+      ],
+      "type": "unique"
+    }
+  ]
+}

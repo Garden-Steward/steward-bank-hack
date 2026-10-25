@@ -1,0 +1,128 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_join_intents",
+  "info": {
+    "singularName": "join-intent",
+    "pluralName": "join-intents",
+    "displayName": "Join Intent"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "receiptId": {
+      "type": "string",
+      "private": true,
+      "unique": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      }
+    },
+    "eventDocumentId": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "boundActorId": {
+      "type": "integer",
+      "private": true
+    },
+    "boundLegacyUserId": {
+      "type": "integer",
+      "private": true
+    },
+    "browserSecretHash": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "requestId": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "requestHmac": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "draftJson": {
+      "type": "json",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "state": {
+      "type": "enumeration",
+      "private": true,
+      "enum": [
+        "pending",
+        "completed",
+        "sign_in_required",
+        "expired",
+        "rejected"
+      ],
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "default": "pending"
+    },
+    "expiresAt": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "participationId": {
+      "type": "integer",
+      "private": true
+    },
+    "completedAt": {
+      "type": "datetime",
+      "private": true
+    }
+  },
+  "indexes": [
+    {
+      "name": "gs_join_intent_request_unique",
+      "columns": [
+        "browser_secret_hash",
+        "request_id"
+      ],
+      "type": "unique"
+    },
+    {
+      "name": "gs_join_intent_expiry_idx",
+      "columns": [
+        "expires_at"
+      ]
+    }
+  ]
+}
