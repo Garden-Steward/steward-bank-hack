@@ -40,17 +40,30 @@ function publicPage(data, total, pagination) {
   };
 }
 
+const forbiddenSlugCharacters = [
+  ...Array.from({ length: 33 }, (_, code) => String.fromCharCode(code)),
+  '\u007f', '\u00a0', '\u1680',
+  ...Array.from({ length: 11 }, (_, index) => String.fromCharCode(0x2000 + index)),
+  '\u2028', '\u2029', '\u202f', '\u205f', '\u3000', '\ufeff', '/', '\\', '?', '#',
+];
+
 function publicSlug(value) {
-  return typeof value === 'string' && value.length > 0 && !/[\s/\\?#\u0000-\u001f\u007f]/u.test(value);
+  return typeof value === 'string' && value.length > 0 && !forbiddenSlugCharacters.some(character => value.includes(character));
 }
 
-function slugFilters() {
-  return {
-    $and: [
-      { slug: { $notNull: true, $ne: '' } },
-      ...[' ', '\t', '\r', '\n', '/', '\\', '?', '#'].map(value => ({ slug: { $notContains: value } })),
-    ],
-  };
+function slugFilters(strapi, uid) {
+  const { tableName, attributes } = strapi.db.metadata.get(uid);
+  const column = attributes.slug.columnName;
+  const query = strapi.db.getConnection(tableName).select(column).whereNotNull(column).whereNot(column, '');
+  const postgres = strapi.db.config.connection.client === 'postgres';
+  let position = 'instr';
+  if (postgres) position = 'strpos';
+  for (const character of forbiddenSlugCharacters) {
+    // PostgreSQL text cannot contain NUL; SQLite needs instr because LIKE truncates at NUL.
+    if (postgres && character === '\u0000') continue;
+    query.whereRaw(position + '(??, ?) = 0', [column, character]);
+  }
+  return { slug: { $in: query } };
 }
 
 module.exports = { publicPagination, publicPage, publicSlug, slugFilters };

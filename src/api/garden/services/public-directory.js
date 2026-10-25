@@ -19,7 +19,7 @@ function approximateLocation(garden) {
 module.exports = ({ strapi }) => ({
   async list(pagination) {
     const now = new Date();
-    const filters = slugFilters();
+    const filters = slugFilters(strapi, UID);
     const [gardens, total] = await Promise.all([
       strapi.documents(UID).findMany({
         status: 'published', filters,

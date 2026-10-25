@@ -33,9 +33,11 @@ function publicMedia(media) {
     const formatUrl = publicUrl(format?.url);
     if (formatUrl) formats[name] = { url: formatUrl, width: dimension(format.width), height: dimension(format.height) };
   }
+  let alternativeText = null;
+  if (typeof media.alternativeText === 'string') alternativeText = media.alternativeText;
   return {
     url,
-    alternativeText: media.alternativeText ?? null,
+    alternativeText,
     width: dimension(media.width),
     height: dimension(media.height),
     formats,

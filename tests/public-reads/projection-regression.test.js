@@ -45,13 +45,14 @@ it('projects historical image scalars without copying nested private data', asyn
 });
 
 it('excludes unroutable slugs from lists, exact totals and every navigation target', async () => {
-  const invalidCharacters = [String.fromCharCode(...[]), ...Array.from({ length: 33 }, (_, index) => String.fromCharCode(index)), '\u007f', '\u00a0', '\u1680', ...Array.from({ length: 11 }, (_, index) => String.fromCharCode(0x2000 + index)), '\u2028', '\u2029', '\u202f', '\u205f', '\u3000', '\ufeff', '/', String.fromCharCode(92), '?', '#'].filter(Boolean);
+  const invalidCharacters = [...Array.from({ length: 33 }, (_, index) => String.fromCharCode(index)), '\u007f', '\u00a0', '\u1680', ...Array.from({ length: 11 }, (_, index) => String.fromCharCode(0x2000 + index)), '\u2028', '\u2029', '\u202f', '\u205f', '\u3000', '\ufeff', '/', String.fromCharCode(92), '?', '#'].filter(Boolean);
   const createdBlogs = [];
   const createdGardens = [];
   const validSlugs = ['first-story', 'notes-été', 'a%percent', '故事', 'fifth-story', 'sixth-story'];
   try {
     let index = 0;
     for (const character of invalidCharacters) {
+      if (strapi.db.config.connection.client === 'postgres' && character === '\u0000') continue;
       const slug = 'bad' + character + 'slug-' + index;
       createdBlogs.push(await strapi.documents(BLOG).create({ status: 'published', data: { title: 'Unroutable ' + index, slug, content: [] } }));
       if (['\u0000', '\u000b', '\u00a0', '\u007f', '\u3000'].includes(character)) {

@@ -35,7 +35,7 @@ function blogUrl(blog) {
 
 module.exports = ({ strapi }) => ({
   async list(pagination) {
-    const filters = slugFilters();
+    const filters = slugFilters(strapi, UID);
     const [blogs, total] = await Promise.all([
       strapi.documents(UID).findMany({ status: 'published', filters, fields: cardFields, populate: cardPopulate, sort: ['createdAt:desc', 'documentId:asc'], start: pagination.start, limit: pagination.limit }),
       strapi.documents(UID).count({ status: 'published', filters }),
@@ -46,7 +46,7 @@ module.exports = ({ strapi }) => ({
   async detail(slug) {
     const authors = { fields: ['firstName', 'lastName'], populate: { profilePhoto: { fields: mediaFields } } };
     const blogs = await strapi.documents(UID).findMany({
-      status: 'published', filters: { $and: [slugFilters(), { slug }] },
+      status: 'published', filters: { $and: [slugFilters(strapi, UID), { slug }] },
       fields: [...cardFields, 'subtitle', 'content', 'hero_display', 'createdAt'],
       populate: {
         ...cardPopulate, author: authors, co_author: authors,
@@ -59,19 +59,19 @@ module.exports = ({ strapi }) => ({
     const [before, after] = await Promise.all([
       strapi.documents(UID).findMany({
         status: 'published', fields: ['slug'],
-        filters: { $and: [slugFilters(), { $or: [{ createdAt: { $gt: blog.createdAt } }, { createdAt: blog.createdAt, documentId: { $lt: blog.documentId } }] }] },
+        filters: { $and: [slugFilters(strapi, UID), { $or: [{ createdAt: { $gt: blog.createdAt } }, { createdAt: blog.createdAt, documentId: { $lt: blog.documentId } }] }] },
         sort: ['createdAt:asc', 'documentId:desc'], limit: 1,
       }),
       strapi.documents(UID).findMany({
         status: 'published', fields: ['slug'],
-        filters: { $and: [slugFilters(), { $or: [{ createdAt: { $lt: blog.createdAt } }, { createdAt: blog.createdAt, documentId: { $gt: blog.documentId } }] }] },
+        filters: { $and: [slugFilters(strapi, UID), { $or: [{ createdAt: { $lt: blog.createdAt } }, { createdAt: blog.createdAt, documentId: { $gt: blog.documentId } }] }] },
         sort: ['createdAt:desc', 'documentId:asc'], limit: 1,
       }),
     ]);
     const excluded = [blog.documentId];
     if (before[0]) excluded.push(before[0].documentId);
     if (after[0]) excluded.push(after[0].documentId);
-    const randomFilters = { $and: [slugFilters(), { documentId: { $notIn: excluded } }] };
+    const randomFilters = { $and: [slugFilters(strapi, UID), { documentId: { $notIn: excluded } }] };
     const eligible = await strapi.documents(UID).count({ status: 'published', filters: randomFilters });
     let random = null;
     if (eligible) {
