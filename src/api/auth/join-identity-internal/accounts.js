@@ -9,7 +9,7 @@ function fail(code) {
   throw error;
 }
 
-module.exports = ({ strapi, databaseNow }) => {
+module.exports = ({ strapi, databaseNow, createLocalAccount }) => {
   const table = name => strapi.db.metadata.get('api::participation.' + name).tableName;
   const users = () => strapi.db.metadata.get('plugin::users-permissions.user').tableName;
   const lock = query => {
@@ -80,7 +80,7 @@ module.exports = ({ strapi, databaseNow }) => {
       if (intent.bound_actor_id !== null) return bind(trx, proof, intent, await activeUser(trx, intent.bound_actor_id), null, false);
       const roles = await strapi.db.query('plugin::users-permissions.role').findMany({ where: { type: 'authenticated' } });
       if (roles.length !== 1) fail('IDENTITY_ROLE_UNAVAILABLE');
-      const user = await strapi.plugin('users-permissions').service('user').add({
+      const user = await createLocalAccount(trx, {
         username: 'garden_' + crypto.randomBytes(24).toString('hex'), password: crypto.randomBytes(48).toString('base64url'),
         provider: 'local', email: proof.delivery_value, confirmed: true, blocked: false, role: roles[0].id,
       });

@@ -44,6 +44,12 @@ async function pendingAfterCooldown({ selected = null, values = null, actorId = 
 }
 const verify = (item, actorId = null) => service.completeProof(actorId, item.result.join.intentId, item.verify);
 const privateProfile = id => query('join-profile').findOne({ where: { userId: id } });
+async function legacyUser(data) {
+  const enabled = process.env.PARTICIPATION_ENABLED;
+  process.env.PARTICIPATION_ENABLED = 'false';
+  try { return await users().create({ data }); }
+  finally { process.env.PARTICIPATION_ENABLED = enabled; }
+}
 
 beforeAll(async () => {
   previousKey = process.env.PARTICIPATION_IDENTITY_KEY;
@@ -180,7 +186,7 @@ test('event cancellation while proof is pending prevents account and RSVP comple
 
 test('legacy email proof requires exact signed-in actor resume and does not create another account', async () => {
   const email = 'Legacy.' + uuid() + '@example.com';
-  const legacy = await users().create({ data: { username: uuid(), email, provider: 'local', confirmed: true, blocked: false } });
+  const legacy = await legacyUser({ username: uuid(), email, provider: 'local', confirmed: true, blocked: false });
   const other = await users().create({ data: { username: uuid(), provider: 'local', confirmed: true, blocked: false } });
   const item = await pendingAfterCooldown({ values: draft({ emailRaw: email }) }); const before = await users().count();
   const result = await verify(item);
@@ -355,4 +361,34 @@ test('revoked email ownership cannot mint a login session after code delivery', 
   const code = inbox[0].text.match(/code is (\d{8})/)[1];
   await query('verified-contact').updateMany({ where: { userId: joined.sessionActorId }, data: { revokedAt: new Date().toISOString() } });
   await request(strapi.server.httpServer).post('/api/auth/email-login/verify').send({ requestId: uuid(), browserSecret: value.body.browserSecret, proofId: value.result.proofId, code }).expect(400);
+});
+
+test('enabled registration blocks unverified legacy email writers while verified construction still works', async () => {
+  const before = await users().count();
+  await expect(users().create({ data: { username: uuid(), email: 'Unsafe.' + uuid() + '@example.com', provider: 'local' } })).rejects.toMatchObject({ name: 'ValidationError' });
+  expect(await users().count()).toBe(before);
+  const item = await pendingAfterCooldown(); const result = await verify(item);
+  const user = await users().findOne({ where: { id: result.sessionActorId } });
+  await expect(users().update({ where: { id: user.id }, data: { email: 'Unsafe.' + uuid() + '@example.com' } })).rejects.toMatchObject({ name: 'ValidationError' });
+  await expect(users().updateMany({ where: { id: user.id }, data: { email: null } })).rejects.toMatchObject({ name: 'ValidationError' });
+  await expect(users().createMany({ data: [{ username: uuid(), email: 'Unsafe.' + uuid() + '@example.com', provider: 'local' }] })).rejects.toMatchObject({ name: 'ValidationError' });
+  expect((await users().findOne({ where: { id: user.id } })).email).toBe(user.email);
+  expect(strapi.service('api::auth.join-identity').legacyEmailWritePermitted()).toBe(false);
+  await request(strapi.server.httpServer).post('/api/auth/local/register').send({ username: uuid(), email: 'Unsafe.' + uuid() + '@example.com', password: 'Synthetic-only-password-123' }).expect(400);
+});
+
+test('verified constructor permission does not leak to another concurrent legacy email write', async () => {
+  const item = await pendingAfterCooldown();
+  const native = strapi.plugin('users-permissions').service('user');
+  const original = native.add;
+  let reached; let release;
+  const entered = new Promise(resolve => { reached = resolve; });
+  const resume = new Promise(resolve => { release = resolve; });
+  native.add = async function (data) { reached(); await resume; return original.call(this, data); };
+  const completing = verify(item); completing.catch(() => {});
+  try {
+    await entered;
+    expect(strapi.service('api::auth.join-identity').legacyEmailWritePermitted()).toBe(false);
+    await expect(users().create({ data: { username: uuid(), email: 'Unsafe.' + uuid() + '@example.com', provider: 'local' } })).rejects.toMatchObject({ name: 'ValidationError' });
+  } finally { release(); await completing; native.add = original; }
 });

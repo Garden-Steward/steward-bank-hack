@@ -181,6 +181,26 @@ module.exports = {
 
     await strapi.service('api::participation.participation').ensureStorage();
 
+    const guardLegacyEmail = (event, creating = false) => {
+      if (process.env.PARTICIPATION_ENABLED !== 'true') return;
+      if (strapi.service('api::auth.join-identity').legacyEmailWritePermitted()) return;
+      let rows = [event.params.data];
+      if (Array.isArray(event.params.data)) rows = event.params.data;
+      for (const data of rows) {
+        if (!data || !Object.hasOwn(data, 'email')) continue;
+        if (creating && (data.email === null || data.email === undefined)) continue;
+        const { errors } = require('@strapi/utils');
+        throw new errors.ValidationError('Use verified registration or your private profile to change contact details.');
+      }
+    };
+    strapi.db.lifecycles.subscribe({
+      models: ['plugin::users-permissions.user'],
+      beforeCreate: event => guardLegacyEmail(event, true),
+      beforeCreateMany: event => guardLegacyEmail(event, true),
+      beforeUpdate: event => guardLegacyEmail(event),
+      beforeUpdateMany: event => guardLegacyEmail(event),
+    });
+
     // Ledger indexes (CREATE INDEX IF NOT EXISTS). Never blocks boot.
     try {
       await strapi.service('api::billing.usage').ensureIndexes();

@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const createProofCrypto = require('../join-identity-internal/proof-crypto');
 const emailValue = require('../join-identity-internal/contact-value');
 const createAccounts = require('../join-identity-internal/accounts');
@@ -33,7 +34,11 @@ function canonical(value) {
 
 module.exports = ({ strapi }) => {
   const transactions = new WeakMap();
-  const accounts = createAccounts({ strapi, databaseNow });
+  const accountWrites = new AsyncLocalStorage();
+  const accounts = createAccounts({ strapi, databaseNow, createLocalAccount: (trx, data) => {
+    requireTransaction(trx);
+    return accountWrites.run(trx, () => strapi.plugin('users-permissions').service('user').add(data));
+  } });
   let tools;
   const cryptography = () => {
     if (!tools) tools = createProofCrypto(process.env.PARTICIPATION_IDENTITY_KEY);
@@ -213,6 +218,10 @@ module.exports = ({ strapi }) => {
   }
   return {
     withTransaction,
+    legacyEmailWritePermitted() {
+      const trx = accountWrites.getStore();
+      return Boolean(trx && transactions.has(trx));
+    },
     describeParticipationRequest(trx, command) {
       requireTransaction(trx);
       if (typeof command.operation !== 'string' || !command.operation.startsWith('participation:')) fail('IDENTITY_INVALID_REQUEST');
