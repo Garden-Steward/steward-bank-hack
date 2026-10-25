@@ -215,6 +215,10 @@ module.exports = ({ strapi }) => {
       if (command.actorId && command.browserSecret === undefined) browserBound = false;
       return identity(command, command.operation, command.input, browserBound);
     },
+    describeEmailLoginVerification(trx, command) {
+      requireTransaction(trx);
+      return identity(command, 'identity:verify:email_login', [command.proofId, command.code]);
+    },
     async ownedEmail(trx, { actorId, rawValue }) {
       requireTransaction(trx);
       if (!Number.isSafeInteger(actorId) || actorId < 1 || !(await activeUser(trx, actorId))) fail('IDENTITY_ACTOR_UNAVAILABLE');

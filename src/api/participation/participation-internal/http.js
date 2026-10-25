@@ -39,7 +39,10 @@ module.exports = ({ strapi }) => ({
     if (process.env.PARTICIPATION_ENABLED !== 'true') {
       ctx.status = 404; ctx.body = { error: { code: 'NOT_FOUND', message: 'Not found.' } }; return;
     }
-    try { await operation(); }
+    try {
+      strapi.service('api::participation.participation').assertStorageReady();
+      await operation();
+    }
     catch (error) {
       let status = error.status;
       let code = error.code;

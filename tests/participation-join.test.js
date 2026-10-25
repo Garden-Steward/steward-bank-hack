@@ -55,6 +55,7 @@ beforeAll(async () => {
 }, 120000);
 beforeEach(() => { inbox = []; });
 afterAll(async () => {
+  await strapi.service('api::auth.email-login').drain();
   strapi.plugin('email').service('email').send = originalSend;
   await cleanupStrapi();
   if (previousKey === undefined) delete process.env.PARTICIPATION_IDENTITY_KEY;
@@ -274,4 +275,66 @@ test('HTTP rejects supplied actor identity and unsupported filters without creat
   await http.post('/api/volunteer-days/' + selected.documentId + '/joins').send({ requestId: uuid(), browserSecret: secret(), draft: draft(), userId: 1 }).expect(422);
   expect(await query('join-intent').count()).toBe(before);
   await http.get('/api/participation/me?filters[userId]=1').expect(422);
+});
+
+async function login(emailRaw) {
+  const body = { requestId: uuid(), browserSecret: secret(), emailRaw };
+  const result = await request(strapi.server.httpServer).post('/api/auth/email-login/request').send(body).expect(202);
+  await strapi.service('api::auth.email-login').drain();
+  return { body, result: result.body.data };
+}
+
+test('email login has the same public shape for known and unknown addresses without creating accounts', async () => {
+  const item = await pending(); await verify(item); inbox = [];
+  const before = await users().count();
+  const known = await login(item.body.draft.emailRaw);
+  const unknown = await login('Unknown.' + uuid() + '@example.com');
+  expect(Object.keys(known.result).sort()).toEqual(['expiresAt', 'kind', 'proofId', 'resendAfterSeconds']);
+  expect(Object.keys(unknown.result).sort()).toEqual(Object.keys(known.result).sort());
+  expect(known.result.kind).toBe(unknown.result.kind);
+  expect(known.result.resendAfterSeconds).toBe(60); expect(unknown.result.resendAfterSeconds).toBe(60);
+  expect(known.result.proofId).toMatch(/^[a-f0-9]{64}$/); expect(unknown.result.proofId).toMatch(/^[a-f0-9]{64}$/);
+  expect(inbox).toHaveLength(1);
+  expect(await users().count()).toBe(before);
+});
+
+test('email login recovers a lost first session without a future event and never replays its session', async () => {
+  const item = await pending(); const joined = await verify(item);
+  await strapi.documents(eventUid).update({ documentId: item.selected.documentId, status: 'published', data: { canceled: true } });
+  inbox = [];
+  const value = await login(item.body.draft.emailRaw);
+  const body = { requestId: uuid(), proofId: value.result.proofId, browserSecret: value.body.browserSecret, code: inbox[0].text.match(/code is (\d{8})/)[1] };
+  const http = request(strapi.server.httpServer);
+  await http.post('/api/auth/email-login/verify').send({ ...body, browserSecret: secret() }).expect(400);
+  const result = await http.post('/api/auth/email-login/verify').send(body).expect(200);
+  expect(result.body.data.session.user.id).toBe(joined.sessionActorId);
+  expect(Object.keys(result.body.data.session.user).sort()).toEqual(['id', 'role', 'username']);
+  expect(JSON.stringify(result.body)).not.toContain(item.body.draft.emailRaw);
+  await http.post('/api/auth/email-login/verify').send(body).expect(400);
+  const profile = await http.get('/api/participation/me/profile').auth(result.body.data.session.jwt, { type: 'bearer' }).expect(200);
+  expect(profile.body.data.emailRaw).toBe(item.body.draft.emailRaw);
+});
+
+test('capped login requests keep the pending shape without adding a proof or sending email', async () => {
+  const item = await pending(); await verify(item); inbox = [];
+  const requests = strapi.db.metadata.get('api::participation.participation-request').tableName;
+  const source = await strapi.db.connection(requests).where({ operation: 'identity:request:join_identity' }).whereNotNull('rate_destination_key').orderBy('id', 'desc').first();
+  for (let index = 0; index < 4; index++) {
+    const row = { ...source }; delete row.id;
+    row.document_id = secret().slice(0, 24); row.request_id = uuid();
+    await strapi.db.connection(requests).insert(row);
+  }
+  const before = await query('contact-proof').count();
+  const capped = await login(item.body.draft.emailRaw);
+  expect(capped.result).toMatchObject({ kind: 'pending_verification', resendAfterSeconds: 60 });
+  expect(capped.result.proofId).toMatch(/^[a-f0-9]{64}$/);
+  expect(await query('contact-proof').count()).toBe(before); expect(inbox).toEqual([]);
+});
+
+test('revoked email ownership cannot mint a login session after code delivery', async () => {
+  const item = await pending(); const joined = await verify(item); inbox = [];
+  const value = await login(item.body.draft.emailRaw);
+  const code = inbox[0].text.match(/code is (\d{8})/)[1];
+  await query('verified-contact').updateMany({ where: { userId: joined.sessionActorId }, data: { revokedAt: new Date().toISOString() } });
+  await request(strapi.server.httpServer).post('/api/auth/email-login/verify').send({ requestId: uuid(), browserSecret: value.body.browserSecret, proofId: value.result.proofId, code }).expect(400);
 });
