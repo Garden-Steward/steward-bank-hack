@@ -208,6 +208,9 @@ module.exports = {
     strapi.documents.use(async (context, next) => {
       if (process.env.PARTICIPATION_ENABLED !== 'true') return next();
       const participation = strapi.service('api::participation.participation');
+      if (['api::volunteer-day.volunteer-day', 'api::project.project'].includes(context.uid) && ['findMany', 'findOne', 'count'].includes(context.action)) {
+        participation.assertLegacyFilters(context.uid, context.params.filters);
+      }
       if (context.uid === 'api::volunteer-day.volunteer-day') {
         if (['create', 'update'].includes(context.action) && context.params.data && Object.hasOwn(context.params.data, 'confirmed')) {
           const { errors } = require('@strapi/utils');

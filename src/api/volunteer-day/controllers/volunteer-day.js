@@ -47,8 +47,30 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
       const participation = strapi.service('api::participation.participation');
       const actorId = ctx.state.user?.id || null;
       ctx.query = await participation.prepareLegacyQuery(ctx.query, actorId);
-      const response = await super.find(ctx);
-      response.data = await participation.projectConfirmed(response.data, actorId);
+      await this.validateQuery(ctx);
+      const query = await this.sanitizeQuery(ctx);
+      query.filters = { $and: [query.filters || {}, await participation.legacyVisibility(actorId)] };
+      if (!query.status) query.status = 'published';
+      const { results, pagination } = await strapi.service('api::volunteer-day.volunteer-day').find(query);
+      const entries = await this.sanitizeOutput(results, ctx);
+      const response = this.transformResponse(await participation.projectConfirmed(entries, actorId), { pagination });
+      ctx.set('Cache-Control', 'no-store');
+      return response;
+    },
+
+    async findOne(ctx) {
+      if (process.env.PARTICIPATION_ENABLED !== 'true') return super.findOne(ctx);
+      const participation = strapi.service('api::participation.participation');
+      const actorId = ctx.state.user?.id || null;
+      ctx.query = await participation.prepareLegacyQuery(ctx.query, actorId);
+      await this.validateQuery(ctx);
+      const query = await this.sanitizeQuery(ctx);
+      query.filters = { $and: [query.filters || {}, await participation.legacyVisibility(actorId)] };
+      if (!query.status) query.status = 'published';
+      const entry = await strapi.service('api::volunteer-day.volunteer-day').findOne(ctx.params.id, query);
+      if (!entry) return ctx.notFound('Volunteer day not found');
+      const sanitized = await this.sanitizeOutput(entry, ctx);
+      const response = this.transformResponse((await participation.projectConfirmed([sanitized], actorId))[0]);
       ctx.set('Cache-Control', 'no-store');
       return response;
     },
@@ -381,12 +403,17 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
           },
         };
 
-        const where = {
+        let where = {
           publishedAt: { $notNull: true },
           garden: {
             slug: ctx.params.slug,
           }
         };
+
+        if (process.env.PARTICIPATION_ENABLED === 'true') {
+          const participation = strapi.service('api::participation.participation');
+          where = { $and: [where, await participation.legacyVisibility(await participation.optionalLegacyActor(ctx))] };
+        }
 
         const offset = (page - 1) * pageSize;
         const [results, total] = await Promise.all([

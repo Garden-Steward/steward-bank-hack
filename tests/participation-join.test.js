@@ -472,6 +472,14 @@ test('anonymous hidden and draft event details are404 under the new authority', 
   const http = request(strapi.server.httpServer);
   await http.get('/api/volunteer-days/by-id/' + hidden.documentId).expect(404);
   await http.get('/api/volunteer-days/by-id/' + draft.documentId).expect(404);
+  const role = await permit('authenticated', 'api::volunteer-day.volunteer-day.find');
+  await permit('authenticated', 'api::volunteer-day.volunteer-day.findOne');
+  const stranger = await users().create({ data: { username: uuid(), provider: 'local', role: role.id, blocked: false } });
+  const token = await strapi.plugin('users-permissions').service('jwt').issue({ id: stranger.id });
+  await http.get('/api/volunteer-days/' + hidden.documentId).auth(token, { type: 'bearer' }).expect(404);
+  await http.get('/api/volunteer-days/' + draft.documentId + '?status=draft').auth(token, { type: 'bearer' }).expect(404);
+  const listed = await http.get('/api/volunteer-days?filters[documentId][$in][0]=' + hidden.documentId + '&filters[documentId][$in][1]=' + draft.documentId).auth(token, { type: 'bearer' }).expect(200);
+  expect(listed.body.data).toEqual([]); expect(listed.body.meta.pagination.total).toBe(0);
 });
 
 test('a document-level garden manager retains private draft event access', async () => {
@@ -486,6 +494,9 @@ test('a document-level garden manager retains private draft event access', async
   await http.get('/api/volunteer-days/by-id/' + selected.documentId).expect(404);
   const result = await http.get('/api/volunteer-days/by-id/' + selected.documentId).auth(token, { type: 'bearer' }).expect(200);
   expect(result.body.data.documentId).toBe(selected.documentId);
+  await permit('authenticated', 'api::volunteer-day.volunteer-day.findOne');
+  const core = await http.get('/api/volunteer-days/' + selected.documentId + '?status=draft').auth(token, { type: 'bearer' }).expect(200);
+  expect(core.body.data.documentId).toBe(selected.documentId);
 });
 
 test('linked project events use canonical counts and project interest never creates a typed-email account', async () => {
@@ -497,9 +508,21 @@ test('linked project events use canonical counts and project interest never crea
   const http = request(strapi.server.httpServer);
   const result = await http.get('/api/projects/' + project.documentId + '?status=published&populate[related_events][populate][confirmed]=true').auth(token, { type: 'bearer' }).expect(200);
   expect(result.body.data.related_events[0]).toMatchObject({ documentId: item.selected.documentId, confirmedCount: 1, confirmed: [{ id: registered.sessionActorId }] });
+  await http.get('/api/projects/' + project.documentId + '?populate[related_events][filters][confirmed][id][$eq]=999').auth(token, { type: 'bearer' }).expect(400);
+  await permit('authenticated', 'api::project.project.find');
+  await http.get('/api/projects?filters[related_events][confirmed][id][$eq]=999').auth(token, { type: 'bearer' }).expect(400);
   const before = await users().count();
   await http.post('/api/projects/' + project.id + '/express-interest').send({ email: 'Unverified.' + uuid() + '@example.com' }).expect(401);
   const interested = await http.post('/api/projects/' + project.id + '/express-interest').auth(token, { type: 'bearer' }).send({}).expect(200);
   expect(interested.body).toEqual({ count: 1, isInterested: true });
   expect(await users().count()).toBe(before);
+  const role = await strapi.db.query('plugin::users-permissions.role').findOne({ where: { type: 'authenticated' } });
+  const other = await users().create({ data: { username: uuid(), provider: 'local', role: role.id, blocked: false } });
+  const otherToken = await strapi.plugin('users-permissions').service('jwt').issue({ id: other.id });
+  await Promise.all([
+    http.post('/api/projects/' + project.id + '/express-interest').auth(token, { type: 'bearer' }).send({}).expect(200),
+    http.post('/api/projects/' + project.id + '/express-interest').auth(otherToken, { type: 'bearer' }).send({}).expect(200),
+  ]);
+  const saved = await strapi.db.query('api::project.project').findOne({ where: { id: project.id }, populate: ['interested'] });
+  expect(saved.interested.map(user => user.id).sort()).toEqual([registered.sessionActorId, other.id].sort());
 });

@@ -38,6 +38,30 @@ function sendError(ctx, status, name, message) {
   ctx.body = { data: null, error: { status, name, message } };
 }
 
+async function changeOwnInterest(strapi, ctx, toggle) {
+  const http = require('../../participation/participation-internal/http')({ strapi });
+  return http.run(ctx, async () => {
+    const userId = await http.actor(ctx, true);
+    if (!/^[1-9]\d*$/.test(String(ctx.params.id)) || Number(ctx.params.id) > 2147483647) require('../../participation/participation-internal/problem')('PROJECT_NOT_FOUND', 404);
+    require('../../participation/participation-internal/input').object(ctx.request.body || {}, []);
+    ctx.body = await strapi.service('api::auth.join-identity').withTransaction(async trx => {
+      const table = strapi.db.metadata.get('api::project.project').tableName;
+      const lock = trx(table).select('id').where({ id: ctx.params.id });
+      if (['pg', 'postgres'].includes(trx.client.config.client)) lock.forUpdate();
+      if (!(await lock.first())) require('../../participation/participation-internal/problem')('PROJECT_NOT_FOUND', 404);
+      const project = await strapi.db.query('api::project.project').findOne({ where: { id: ctx.params.id, publishedAt: { $notNull: true }, review_status: { $in: PUBLIC_STATUSES } }, populate: { interested: { select: ['id'] } } });
+      if (!project) require('../../participation/participation-internal/problem')('PROJECT_NOT_FOUND', 404);
+      const ids = (project.interested || []).map(user => user.id);
+      let next = ids;
+      let interested = true;
+      if (toggle && ids.includes(userId)) { next = ids.filter(id => id !== userId); interested = false; }
+      else if (!ids.includes(userId)) next = [...ids, userId];
+      await strapi.db.query('api::project.project').update({ where: { id: project.id }, data: { interested: next } });
+      return { count: next.length, isInterested: interested };
+    });
+  });
+}
+
 // Non-admins see: publicly-visible projects (APPROVED/COMPLETED), projects they
 // created or manage directly, and — so the garden's manage view can list
 // pending pitches for approval — every project on a garden they manage,
@@ -274,6 +298,7 @@ module.exports = createCoreController('api::project.project', ({ strapi }) => ({
 
   // Toggle the current user in/out of a project's interested list.
   async toggleInterest(ctx) {
+    if (process.env.PARTICIPATION_ENABLED === 'true') return changeOwnInterest(strapi, ctx, true);
     const user = ctx.state.user;
     if (!user) {
       return ctx.unauthorized('You must be logged in to express interest');
@@ -480,22 +505,7 @@ module.exports = createCoreController('api::project.project', ({ strapi }) => ({
   },
 
   async expressInterest(ctx) {
-    if (process.env.PARTICIPATION_ENABLED === 'true') {
-      const http = require('../../participation/participation-internal/http')({ strapi });
-      return http.run(ctx, async () => {
-        const userId = await http.actor(ctx, true);
-        const body = ctx.request.body || {};
-        require('../../participation/participation-internal/input').object(body, []);
-        const project = await strapi.db.query('api::project.project').findOne({ where: { id: ctx.params.id, publishedAt: { $notNull: true }, review_status: { $in: PUBLIC_STATUSES } }, populate: { interested: { select: ['id'] } } });
-        if (!project) return ctx.notFound('Project not found');
-        const ids = (project.interested || []).map(user => user.id);
-        if (!ids.includes(userId)) {
-          ids.push(userId);
-          await strapi.db.query('api::project.project').update({ where: { id: project.id }, data: { interested: ids } });
-        }
-        ctx.body = { count: ids.length, isInterested: true };
-      });
-    }
+    if (process.env.PARTICIPATION_ENABLED === 'true') return changeOwnInterest(strapi, ctx, false);
     const { id } = ctx.params;
     const body = ctx.request.body?.data || ctx.request.body || {};
     const email = (body.email || '').trim().toLowerCase();

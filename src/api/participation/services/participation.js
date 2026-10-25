@@ -153,7 +153,7 @@ module.exports = ({ strapi }) => {
           if (!cutover) await legacy.importConfirmed();
         }
         state = { kind: 'ready' };
-      }, error => {
+      }).catch(error => {
         state = { kind: 'unavailable' };
         throw error;
       });
@@ -165,6 +165,8 @@ module.exports = ({ strapi }) => {
     projectConfirmed: (entries, actorId) => legacy.project(entries, actorId),
     prepareLegacyQuery: (params, actorId) => legacy.prepareQuery(params, actorId),
     stripConfirmedPopulate: (uid, params) => legacy.populate(uid, params),
+    assertLegacyFilters: (uid, filters) => legacy.rejectNestedConfirmed(uid, filters),
+    legacyVisibility: actorId => legacy.visibility(actorId),
     optionalLegacyActor: ctx => legacy.optionalActor(ctx),
     options() { assertStorageReady(); return options.read(); },
     async submit(actorId, eventDocumentId, body, socketPeer) {

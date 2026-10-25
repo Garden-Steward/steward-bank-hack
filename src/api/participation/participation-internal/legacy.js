@@ -43,11 +43,13 @@ module.exports = ({ strapi }) => {
         let target;
         if (attribute) target = attribute.target || attribute.component;
         if (target && Object.hasOwn(clean, 'populate')) clean.populate = populate(target, clean.populate, depth + 1);
+        if (target && clean.filters) rejectNestedConfirmed(target, clean.filters);
         if (clean.on) {
           clean.on = {};
           for (const [component, fields] of Object.entries(options.on)) {
             if (['__proto__', 'prototype', 'constructor'].includes(component)) throw new errors.ValidationError('Unsupported population');
             clean.on[component] = { ...fields };
+            if (fields.filters) rejectNestedConfirmed(component, fields.filters);
             if (fields.populate) clean.on[component].populate = populate(component, fields.populate, depth + 1);
           }
         }
@@ -56,14 +58,16 @@ module.exports = ({ strapi }) => {
     }
     return result;
   }
-  function rejectNestedConfirmed(uid, filters) {
+  function rejectNestedConfirmed(uid, filters, depth = 0) {
     if (!filters || typeof filters !== 'object') return;
+    if (depth > 12) throw new errors.ValidationError('Filters are too deep');
     for (const [key, value] of Object.entries(filters)) {
+      if (['__proto__', 'prototype', 'constructor'].includes(key)) throw new errors.ValidationError('Unsupported filter');
       if (uid === EVENT && key === 'confirmed') throw new errors.ValidationError('Only the current actor RSVP filter is supported');
       const attribute = strapi.getModel(uid)?.attributes[key];
       let target = uid;
       if (attribute?.target) target = attribute.target;
-      rejectNestedConfirmed(target, value);
+      rejectNestedConfirmed(target, value, depth + 1);
     }
   }
   async function prepareQuery(params, actorId) {
@@ -99,7 +103,15 @@ module.exports = ({ strapi }) => {
     });
   }
   return {
-    populate, prepareQuery, project,
+    populate, prepareQuery, project, rejectNestedConfirmed,
+    async visibility(actorId) {
+      const publicEvents = { publishedAt: { $notNull: true }, accessibility: 'Public', garden: { publishedAt: { $notNull: true } } };
+      if (!actorId) return publicEvents;
+      const user = await strapi.db.query('plugin::users-permissions.user').findOne({ where: { id: actorId }, populate: ['role'] });
+      if (user?.role?.type === 'administrator') return {};
+      const gardens = await strapi.db.query('api::garden.garden').findMany({ where: { managers: { id: actorId } }, select: ['documentId'] });
+      return { $or: [publicEvents, { garden: { documentId: { $in: [...new Set(gardens.map(row => row.documentId))] } } }] };
+    },
     async optionalActor(ctx) {
       try { return await createHttp({ strapi }).actor(ctx); } catch { return null; }
     },

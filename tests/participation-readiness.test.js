@@ -57,3 +57,21 @@ test('a failed recheck clears previous readiness and a later retry can recover',
   service.assertStorageReady();
   expect(ensureConstraints).toHaveBeenCalledTimes(3);
 });
+
+test('cutover storage failure stays unavailable and a later setup retry can recover', async () => {
+  const previous = process.env.PARTICIPATION_ENABLED;
+  process.env.PARTICIPATION_ENABLED = 'true';
+  const get = jest.fn().mockRejectedValueOnce(new Error('cutover storage unavailable')).mockResolvedValueOnce({ version: 1 });
+  const service = createService({ strapi: { store: () => ({ get }) } });
+  ensureConstraints.mockResolvedValue();
+  try {
+    await expect(service.ensureStorage()).rejects.toThrow('cutover storage unavailable');
+    expect(() => service.assertStorageReady()).toThrow('Participation storage is unavailable');
+    await service.ensureStorage();
+    expect(() => service.assertStorageReady()).not.toThrow();
+    expect(get).toHaveBeenCalledTimes(2);
+  } finally {
+    if (previous === undefined) delete process.env.PARTICIPATION_ENABLED;
+    else process.env.PARTICIPATION_ENABLED = previous;
+  }
+});
