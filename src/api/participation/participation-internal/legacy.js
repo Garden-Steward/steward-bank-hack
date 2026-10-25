@@ -44,12 +44,14 @@ module.exports = ({ strapi }) => {
         if (attribute) target = attribute.target || attribute.component;
         if (target && Object.hasOwn(clean, 'populate')) clean.populate = populate(target, clean.populate, depth + 1);
         if (target && clean.filters) rejectNestedConfirmed(target, clean.filters);
+        if (target && clean.sort) assertSort(target, clean.sort);
         if (clean.on) {
           clean.on = {};
           for (const [component, fields] of Object.entries(options.on)) {
             if (['__proto__', 'prototype', 'constructor'].includes(component)) throw new errors.ValidationError('Unsupported population');
             clean.on[component] = { ...fields };
             if (fields.filters) rejectNestedConfirmed(component, fields.filters);
+            if (fields.sort) assertSort(component, fields.sort);
             if (fields.populate) clean.on[component].populate = populate(component, fields.populate, depth + 1);
           }
         }
@@ -70,6 +72,22 @@ module.exports = ({ strapi }) => {
       if (attribute?.target) target = attribute.target;
       rejectNestedConfirmed(target, value, depth + 1);
     }
+  }
+  function assertSort(uid, value) {
+    if (Array.isArray(value)) { for (const item of value) assertSort(uid, item); return; }
+    if (typeof value === 'string') {
+      for (const field of value.split(',')) {
+        let model = uid;
+        for (const name of field.split(':')[0].split('.')) {
+          if (model === EVENT && name === 'confirmed') throw new errors.ValidationError('Sorting by RSVP identities is not supported');
+          const attribute = strapi.getModel(model)?.attributes[name];
+          if (attribute?.target === EVENT) throw new errors.ValidationError('Sorting by related event details is not supported');
+          if (attribute?.target) model = attribute.target;
+        }
+      }
+      return;
+    }
+    rejectNestedConfirmed(uid, value);
   }
   async function prepareQuery(params, actorId) {
     const result = { ...params };
@@ -112,7 +130,7 @@ module.exports = ({ strapi }) => {
       return { $or: [publicEvents, { garden: { documentId: { $in: [...new Set(gardens.map(row => row.documentId))] } } }] };
   }
   return {
-    populate, prepareQuery, project, rejectNestedConfirmed, visibility,
+    populate, prepareQuery, project, rejectNestedConfirmed, visibility, assertSort,
     async visiblePopulate(uid, value, actorId) {
       const filter = await visibility(actorId);
       function walk(modelUid, entries) {

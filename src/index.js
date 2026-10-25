@@ -214,6 +214,7 @@ module.exports = {
       }
       if (['api::volunteer-day.volunteer-day', 'api::project.project'].includes(context.uid) && ['findMany', 'findOne', 'count'].includes(context.action)) {
         participation.assertLegacyFilters(context.uid, context.params.filters);
+        participation.assertLegacySort(context.uid, context.params.sort);
       }
       if (context.uid === 'api::volunteer-day.volunteer-day') {
         if (['create', 'update'].includes(context.action) && context.params.data && Object.hasOwn(context.params.data, 'confirmed')) {

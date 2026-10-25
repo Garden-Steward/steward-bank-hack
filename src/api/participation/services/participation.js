@@ -166,6 +166,7 @@ module.exports = ({ strapi }) => {
     prepareLegacyQuery: (params, actorId) => legacy.prepareQuery(params, actorId),
     stripConfirmedPopulate: (uid, params) => legacy.populate(uid, params),
     assertLegacyFilters: (uid, filters) => legacy.rejectNestedConfirmed(uid, filters),
+    assertLegacySort: (uid, sort) => legacy.assertSort(uid, sort),
     legacyVisibility: actorId => legacy.visibility(actorId),
     visibleLegacyPopulate: (uid, populate, actorId) => legacy.visiblePopulate(uid, populate, actorId),
     optionalLegacyActor: ctx => legacy.optionalActor(ctx),
