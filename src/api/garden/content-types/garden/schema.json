@@ -118,6 +118,13 @@
       "repeatable": false,
       "component": "garden.visit-info",
       "description": "Meeting spot, parking, restroom, accessibility: shown on every event at this garden"
+    },
+    "plots": {
+      "displayName": "Plots",
+      "type": "component",
+      "repeatable": true,
+      "component": "garden.plot",
+      "description": "The beds on this garden's Explore island, one plant each. Order here is the order they're laid out."
     }
   }
 }

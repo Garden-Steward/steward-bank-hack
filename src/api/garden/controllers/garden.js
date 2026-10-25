@@ -224,6 +224,56 @@ module.exports = createCoreController('api::garden.garden', ({ strapi }) => ({
     }
   },
 
+  // The beds on this garden's Explore island. `saved` is false until a manager
+  // lays some out; the island then falls back to plants logged nearby.
+  async getPlots(ctx) {
+    const { slug } = ctx.params;
+    if (!SLUG_PATTERN.test(String(slug))) {
+      return ctx.badRequest('Invalid garden slug');
+    }
+    const garden = await strapi.db.query('api::garden.garden').findOne({ where: { slug: String(slug) } });
+    if (!garden) return ctx.notFound('Garden not found');
+
+    const { plots, saved } = await strapi.service('api::garden.plots').getForGarden(garden);
+    ctx.set('Cache-Control', 'no-store');
+    return { data: { plots, meta: { saved, gardenSlug: garden.slug } } };
+  },
+
+  // Replace this garden's plots. Only a manager of THIS garden (or an
+  // administrator) may, for the same reason as the standing list above.
+  async replacePlots(ctx) {
+    const user = ctx.state.user;
+    if (!user) return ctx.unauthorized('You must be logged in');
+
+    const { slug } = ctx.params;
+    if (!SLUG_PATTERN.test(String(slug))) {
+      return ctx.badRequest('Invalid garden slug');
+    }
+
+    // Draft and published rows share the slug; a manager link on either counts.
+    const rows = await strapi.db.query('api::garden.garden').findMany({
+      where: { slug: String(slug) },
+      populate: { managers: { select: ['id'] } },
+    });
+    if (!rows.length) return ctx.notFound('Garden not found');
+
+    const isAdmin = user.role?.type === 'administrator';
+    const managesThisGarden = rows.some((r) => (r.managers || []).some((m) => m.id === user.id));
+    if (!isAdmin && !managesThisGarden) {
+      return ctx.forbidden("Only managers of this garden can edit its plots");
+    }
+
+    const body = ctx.request.body?.data || ctx.request.body || {};
+    try {
+      const { plots, saved } = await strapi.service('api::garden.plots').replaceForGarden(rows[0], body.plots);
+      ctx.set('Cache-Control', 'no-store');
+      return { data: { plots, meta: { saved, gardenSlug: rows[0].slug } } };
+    } catch (e) {
+      if (e.plotValidationError) return ctx.badRequest(e.message);
+      throw e;
+    }
+  },
+
   // The signed-in user's standing with a garden, for the garden page's
   // member menu: { member, manager, muted }.
   async membership(ctx) {

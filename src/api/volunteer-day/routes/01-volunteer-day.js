@@ -60,6 +60,11 @@ module.exports = {
       path: '/volunteer-days/rsvp/:id',
       handler: 'volunteer-day.rsvpEvent',
     },
+    { // "Can't make it": the signed-in user leaves the event's confirmed list.
+      method: 'DELETE',
+      path: '/volunteer-days/rsvp/:id',
+      handler: 'volunteer-day.unrsvpEvent',
+    },
 
   ]
 }

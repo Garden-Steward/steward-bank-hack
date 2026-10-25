@@ -333,7 +333,11 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
         $and: [VdayHelper.notTrue('canceled')]
       };
 
-      const populate = ['hero_image', 'garden', 'garden.hero_image', 'garden.organization'];
+      const populate = ['hero_image', 'garden', 'garden.hero_image', 'garden.organization', 'confirmed'];
+      // Who's going: ids for everyone, first name and last initial for signed-in members.
+      const publicUser = ctx.state.user
+        ? (u) => ({ id: u.id, firstName: u.firstName, lastName: u.lastName ? u.lastName[0] : null, color: u.color })
+        : (u) => ({ id: u.id });
 
       let entries;
       let paginationMeta = null;
@@ -370,6 +374,7 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
         if (!hasVolunteerDayHeroImage && entry.garden && entry.garden.hero_image && entry.garden.hero_image.id) {
           entry.hero_image = entry.garden.hero_image;
         }
+        entry.confirmed = (entry.confirmed || []).map(publicUser);
         return entry;
       });
 
@@ -383,6 +388,23 @@ module.exports = createCoreController('api::volunteer-day.volunteer-day', ({stra
       }
 
       return entries;
+    },
+
+    /** DELETE /volunteer-days/rsvp/:id — the signed-in user is no longer going. */
+    unrsvpEvent: async ctx => {
+      const user = ctx.state.user;
+      if (!user) return ctx.unauthorized('Sign in to change your RSVP');
+      const event = await strapi.db.query('api::volunteer-day.volunteer-day').findOne({
+        where: { id: ctx.params.id },
+        populate: ['confirmed'],
+      });
+      if (!event) return ctx.notFound('Event not found');
+      const confirmed = (event.confirmed || []).map(u => u.id).filter(id => id !== user.id);
+      await strapi.db.query('api::volunteer-day.volunteer-day').update({
+        where: { id: event.id },
+        data: { confirmed },
+      });
+      return { data: { id: event.id, confirmed: confirmed.map(id => ({ id })) } };
     },
 
     getByGarden: async ctx => {

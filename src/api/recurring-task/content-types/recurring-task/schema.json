@@ -86,6 +86,25 @@
       ],
       "default": "Sunday",
       "required": false
+    },
+    "repeat_frequency": {
+      "type": "enumeration",
+      "enum": [
+        "daily",
+        "weekly",
+        "biweekly",
+        "monthly",
+        "quarterly"
+      ],
+      "description": "How often the day's task is made (see src/utils/repeat-schedule.js). Empty means daily, as before repeats existed."
+    },
+    "repeat_days": {
+      "type": "json",
+      "description": "Weekday names for weekly and biweekly repeats, e.g. [\"Tuesday\", \"Wednesday\", \"Thursday\"]"
+    },
+    "repeat_start": {
+      "type": "date",
+      "description": "First day it can be due. Biweekly counts weeks from here; monthly and quarterly repeat on its day of the month."
     }
   }
 }

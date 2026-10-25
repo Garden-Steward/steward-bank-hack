@@ -1,0 +1,19 @@
+{
+  "collectionName": "components_garden_plots",
+  "info": {
+    "displayName": "Plot",
+    "description": "One bed on the garden's Explore island, growing one plant"
+  },
+  "options": {},
+  "attributes": {
+    "label": {
+      "type": "string",
+      "maxLength": 60
+    },
+    "plant": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::plant.plant"
+    }
+  }
+}
