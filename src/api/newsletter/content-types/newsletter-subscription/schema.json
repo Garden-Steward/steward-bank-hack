@@ -1,0 +1,133 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_newsletter_subscriptions",
+  "info": {
+    "singularName": "newsletter-subscription",
+    "pluralName": "newsletter-subscriptions",
+    "displayName": "Newsletter Subscription"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "receiptId": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      },
+      "unique": true
+    },
+    "userId": {
+      "type": "integer",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      },
+      "unique": true,
+      "min": 1
+    },
+    "preference": {
+      "type": "enumeration",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "enum": [
+        "subscribed",
+        "unsubscribed"
+      ],
+      "default": "subscribed"
+    },
+    "emailRaw": {
+      "type": "text",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "maxLength": 320
+    },
+    "deliveryEmail": {
+      "type": "text",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "maxLength": 320
+    },
+    "destinationKey": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "maxLength": 64
+    },
+    "derivationVersion": {
+      "type": "integer",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "min": 1,
+      "default": 1
+    },
+    "verifiedContactId": {
+      "type": "integer",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "min": 1
+    },
+    "revision": {
+      "type": "integer",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "min": 1,
+      "default": 1
+    },
+    "disclosureVersion": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "firstEnrolledAt": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    },
+    "unsubscribedAt": {
+      "type": "datetime",
+      "private": true
+    }
+  },
+  "indexes": []
+}
