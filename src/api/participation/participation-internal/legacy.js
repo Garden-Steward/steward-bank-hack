@@ -65,6 +65,7 @@ module.exports = ({ strapi }) => {
       if (['__proto__', 'prototype', 'constructor'].includes(key)) throw new errors.ValidationError('Unsupported filter');
       if (uid === EVENT && key === 'confirmed') throw new errors.ValidationError('Only the current actor RSVP filter is supported');
       const attribute = strapi.getModel(uid)?.attributes[key];
+      if (attribute?.target === EVENT) throw new errors.ValidationError('Filtering on related event details is not supported');
       let target = uid;
       if (attribute?.target) target = attribute.target;
       rejectNestedConfirmed(target, value, depth + 1);

@@ -528,6 +528,9 @@ test('linked project events use canonical counts and project interest never crea
   expect(saved.interested.map(user => user.id).sort()).toEqual([registered.sessionActorId, other.id].sort());
   const hidden = await event({ accessibility: 'Garden Members' });
   await strapi.db.query('api::project.project').update({ where: { id: project.id }, data: { related_events: [item.selected.id, hidden.id] } });
+  await permit('public', 'api::project.project.find');
+  await http.get('/api/projects?filters[related_events][documentId][$eq]=' + hidden.documentId).expect(400);
+  await http.get('/api/projects?filters[related_events][title][$startsWith]=Synthetic').auth(token, { type: 'bearer' }).expect(400);
   const privateLinked = await http.get('/api/projects/' + project.documentId + '?populate[related_events]=true').auth(token, { type: 'bearer' }).expect(200);
   expect(privateLinked.body.data.related_events.map(event => event.documentId)).toEqual([item.selected.documentId]);
   const gardenDraft = await strapi.db.query('api::garden.garden').findOne({ where: { documentId: garden.documentId, publishedAt: null } });
