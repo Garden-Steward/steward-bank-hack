@@ -3,10 +3,13 @@
 const crypto = require('node:crypto');
 const request = require('supertest');
 const { setupStrapi, cleanupStrapi } = require('./helpers/strapi');
+const createCrypto = require('../src/api/auth/join-identity-internal/proof-crypto');
+const elapsedDestination = require('./helpers/identity-time');
 
 const uuid = () => crypto.randomUUID();
 const secret = () => crypto.randomBytes(32).toString('hex');
 const MASTER = secret();
+const tools = createCrypto(MASTER);
 const eventUid = 'api::volunteer-day.volunteer-day';
 let previousKey;
 let previousEnabled;
@@ -31,10 +34,11 @@ function draft(extra = {}) {
     accessRequestRaw: '  Private access note  ', saveReusableProfile: true, profileVersion: null, ...extra,
   };
 }
-async function pending({ selected = null, values = null, actorId = null } = {}) {
+async function pendingAfterCooldown({ selected = null, values = null, actorId = null } = {}) {
   if (!selected) selected = await event();
   if (!values) values = draft();
   const body = { requestId: uuid(), browserSecret: secret(), draft: values };
+  await elapsedDestination(strapi, tools, values.emailRaw);
   const result = await service.submit(actorId, selected.documentId, body, '127.0.0.1');
   return { selected, body, result, verify: { requestId: uuid(), browserSecret: body.browserSecret, code: inbox[inbox.length - 1].text.match(/code is (\d{8})/)[1] } };
 }
@@ -74,7 +78,7 @@ test('options use real published garden/interest identities and disclose require
 
 test('a guest is pending until proof and then commits exact details, own receipt, account and newsletter', async () => {
   const before = await users().count();
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   expect(item.result.join).toMatchObject({ kind: 'pending_verification', verification: 'simulated' });
   expect(await users().count()).toBe(before);
   expect(await query('participation').count()).toBe(0);
@@ -95,7 +99,7 @@ test('a guest is pending until proof and then commits exact details, own receipt
 });
 
 test('exact verification replay returns the own receipt without another session or duplicate rows', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const first = await verify(item);
   const replay = await verify(item);
   expect(replay.join).toEqual(first.join);
@@ -106,7 +110,7 @@ test('exact verification replay returns the own receipt without another session 
 });
 
 test('wrong-code retry with one UUID commits one guess and a different UUID commits the next guess', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const wrong = item.verify.code.slice(0, 7) + String((Number(item.verify.code[7]) + 1) % 10);
   const body = { ...item.verify, code: wrong };
   expect((await service.completeProof(null, item.result.join.intentId, body)).join.kind).toBe('invalid_proof');
@@ -118,13 +122,13 @@ test('wrong-code retry with one UUID commits one guess and a different UUID comm
 });
 
 test('wrong browser cannot inspect or consume the pending intent', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   expect((await service.completeProof(null, item.result.join.intentId, { ...item.verify, browserSecret: secret() })).join.kind).toBe('invalid_proof');
   expect((await query('contact-proof').findOne({ where: { receiptId: item.result.join.proofId } })).attempts).toBe(0);
 });
 
 test('new UUID guesses after the five-attempt cap do not grow the verification ledger', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const wrong = item.verify.code.slice(0, 7) + String((Number(item.verify.code[7]) + 1) % 10);
   for (let index = 0; index < 8; index++) await service.completeProof(null, item.result.join.intentId, { ...item.verify, requestId: uuid(), code: wrong });
   const requests = strapi.db.metadata.get('api::participation.participation-request').tableName;
@@ -133,7 +137,7 @@ test('new UUID guesses after the five-attempt cap do not grow the verification l
 });
 
 test('authenticated exact email owner joins directly and profile conflict preserves a valid RSVP snapshot', async () => {
-  const item = await pending(); const first = await verify(item);
+  const item = await pendingAfterCooldown(); const first = await verify(item);
   const selected = await event();
   const changed = draft({ emailRaw: item.body.draft.emailRaw, preferredNameRaw: '  Event-only name  ', profileVersion: 999 });
   const body = { requestId: uuid(), browserSecret: secret(), draft: changed };
@@ -167,7 +171,7 @@ test.each([
 });
 
 test('event cancellation while proof is pending prevents account and RSVP completion', async () => {
-  const item = await pending(); const before = await users().count();
+  const item = await pendingAfterCooldown(); const before = await users().count();
   await strapi.documents(eventUid).update({ documentId: item.selected.documentId, status: 'published', data: { canceled: true } });
   await expect(verify(item)).rejects.toMatchObject({ code: 'EVENT_UNAVAILABLE', status: 409 });
   expect(await users().count()).toBe(before);
@@ -178,7 +182,7 @@ test('legacy email proof requires exact signed-in actor resume and does not crea
   const email = 'Legacy.' + uuid() + '@example.com';
   const legacy = await users().create({ data: { username: uuid(), email, provider: 'local', confirmed: true, blocked: false } });
   const other = await users().create({ data: { username: uuid(), provider: 'local', confirmed: true, blocked: false } });
-  const item = await pending({ values: draft({ emailRaw: email }) }); const before = await users().count();
+  const item = await pendingAfterCooldown({ values: draft({ emailRaw: email }) }); const before = await users().count();
   const result = await verify(item);
   expect(result.join).toMatchObject({ kind: 'sign_in_required', canResume: true });
   expect(result).not.toHaveProperty('sessionActorId'); expect(JSON.stringify(result)).not.toContain('legacyUserId');
@@ -190,7 +194,7 @@ test('legacy email proof requires exact signed-in actor resume and does not crea
 });
 
 test('self profile edit preserves raw input, clears changed contact proof and leaves login credentials alone', async () => {
-  const item = await pending(); const result = await verify(item); const userId = result.sessionActorId;
+  const item = await pendingAfterCooldown(); const result = await verify(item); const userId = result.sessionActorId;
   const user = await users().findOne({ where: { id: userId } });
   const current = await service.readOwnProfile(userId);
   const edit = { requestId: uuid(), version: current.version, preferredNameRaw: '  New raw name  ', emailRaw: '  Other.' + uuid() + '@EXAMPLE.COM  ', phoneRaw: '  +44 20 7946 0958  ', preferences: current.preferences };
@@ -202,25 +206,38 @@ test('self profile edit preserves raw input, clears changed contact proof and le
 });
 
 test('own receipt read cannot expose another user registration', async () => {
-  const item = await pending(); const result = await verify(item);
+  const item = await pendingAfterCooldown(); const result = await verify(item);
   const other = await users().create({ data: { username: uuid(), provider: 'local', blocked: false } });
   expect(await service.ownReceipt(other.id, item.selected.documentId)).toBeNull();
   expect(await service.ownReceipt(result.sessionActorId, item.selected.documentId)).toEqual(result.join.receipt);
 });
 
 test('accepted pending submit replay reuses its proof and changed raw input conflicts', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const first = await service.submit(null, item.selected.documentId, item.body, '127.0.0.1');
   expect(first).toEqual(item.result); expect(inbox).toHaveLength(1);
   await expect(service.submit(null, item.selected.documentId, { ...item.body, draft: { ...item.body.draft, preferredNameRaw: 'Different' } }, '127.0.0.1')).rejects.toMatchObject({ code: 'REQUEST_CONFLICT', status: 409 });
 });
 
+test('a fresh join UUID during destination cooldown rolls back its provisional intent and reports the wait', async () => {
+  const item = await pendingAfterCooldown();
+  const before = { intents: await query('join-intent').count(), proofs: await query('contact-proof').count(), requests: await query('participation-request').count() };
+  const response = await request(strapi.server.httpServer).post('/api/volunteer-days/' + item.selected.documentId + '/joins').send({ ...item.body, requestId: uuid() }).expect(400);
+  expect(response.body.error.code).toBe('IDENTITY_COOLDOWN');
+  expect(response.headers['retry-after']).toBe('60');
+  expect(await query('join-intent').count()).toBe(before.intents);
+  expect(await query('contact-proof').count()).toBe(before.proofs);
+  expect(await query('participation-request').count()).toBe(before.requests);
+  expect(inbox).toHaveLength(1);
+});
+
 test('resend cooldown preserves its original generation and later resend requires the new code', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const body = { requestId: uuid(), browserSecret: item.body.browserSecret };
   await expect(service.resend(item.result.join.intentId, body, '127.0.0.1')).rejects.toMatchObject({ code: 'IDENTITY_COOLDOWN', status: 400 });
   const proofs = strapi.db.metadata.get('api::participation.contact-proof').tableName;
   await strapi.db.connection(proofs).where({ receipt_id: item.result.join.proofId }).update({ expires_at: new Date(Date.now() + 600000 - 61000) });
+  await elapsedDestination(strapi, tools, item.body.draft.emailRaw);
   expect((await service.resend(item.result.join.intentId, body, '127.0.0.1')).join.kind).toBe('pending_verification');
   expect(inbox).toHaveLength(2);
   expect((await verify(item)).join.kind).toBe('invalid_proof');
@@ -277,7 +294,8 @@ test('HTTP rejects supplied actor identity and unsupported filters without creat
   await http.get('/api/participation/me?filters[userId]=1').expect(422);
 });
 
-async function login(emailRaw) {
+async function loginAfterCooldown(emailRaw) {
+  await elapsedDestination(strapi, tools, emailRaw);
   const body = { requestId: uuid(), browserSecret: secret(), emailRaw };
   const result = await request(strapi.server.httpServer).post('/api/auth/email-login/request').send(body).expect(202);
   await strapi.service('api::auth.email-login').drain();
@@ -285,10 +303,10 @@ async function login(emailRaw) {
 }
 
 test('email login has the same public shape for known and unknown addresses without creating accounts', async () => {
-  const item = await pending(); await verify(item); inbox = [];
+  const item = await pendingAfterCooldown(); await verify(item); inbox = [];
   const before = await users().count();
-  const known = await login(item.body.draft.emailRaw);
-  const unknown = await login('Unknown.' + uuid() + '@example.com');
+  const known = await loginAfterCooldown(item.body.draft.emailRaw);
+  const unknown = await loginAfterCooldown('Unknown.' + uuid() + '@example.com');
   expect(Object.keys(known.result).sort()).toEqual(['expiresAt', 'kind', 'proofId', 'resendAfterSeconds']);
   expect(Object.keys(unknown.result).sort()).toEqual(Object.keys(known.result).sort());
   expect(known.result.kind).toBe(unknown.result.kind);
@@ -299,10 +317,10 @@ test('email login has the same public shape for known and unknown addresses with
 });
 
 test('email login recovers a lost first session without a future event and never replays its session', async () => {
-  const item = await pending(); const joined = await verify(item);
+  const item = await pendingAfterCooldown(); const joined = await verify(item);
   await strapi.documents(eventUid).update({ documentId: item.selected.documentId, status: 'published', data: { canceled: true } });
   inbox = [];
-  const value = await login(item.body.draft.emailRaw);
+  const value = await loginAfterCooldown(item.body.draft.emailRaw);
   const body = { requestId: uuid(), proofId: value.result.proofId, browserSecret: value.body.browserSecret, code: inbox[0].text.match(/code is (\d{8})/)[1] };
   const http = request(strapi.server.httpServer);
   await http.post('/api/auth/email-login/verify').send({ ...body, browserSecret: secret() }).expect(400);
@@ -316,7 +334,7 @@ test('email login recovers a lost first session without a future event and never
 });
 
 test('capped login requests keep the pending shape without adding a proof or sending email', async () => {
-  const item = await pending(); await verify(item); inbox = [];
+  const item = await pendingAfterCooldown(); await verify(item); inbox = [];
   const requests = strapi.db.metadata.get('api::participation.participation-request').tableName;
   const source = await strapi.db.connection(requests).where({ operation: 'identity:request:join_identity' }).whereNotNull('rate_destination_key').orderBy('id', 'desc').first();
   for (let index = 0; index < 4; index++) {
@@ -325,15 +343,15 @@ test('capped login requests keep the pending shape without adding a proof or sen
     await strapi.db.connection(requests).insert(row);
   }
   const before = await query('contact-proof').count();
-  const capped = await login(item.body.draft.emailRaw);
+  const capped = await loginAfterCooldown(item.body.draft.emailRaw);
   expect(capped.result).toMatchObject({ kind: 'pending_verification', resendAfterSeconds: 60 });
   expect(capped.result.proofId).toMatch(/^[a-f0-9]{64}$/);
   expect(await query('contact-proof').count()).toBe(before); expect(inbox).toEqual([]);
 });
 
 test('revoked email ownership cannot mint a login session after code delivery', async () => {
-  const item = await pending(); const joined = await verify(item); inbox = [];
-  const value = await login(item.body.draft.emailRaw);
+  const item = await pendingAfterCooldown(); const joined = await verify(item); inbox = [];
+  const value = await loginAfterCooldown(item.body.draft.emailRaw);
   const code = inbox[0].text.match(/code is (\d{8})/)[1];
   await query('verified-contact').updateMany({ where: { userId: joined.sessionActorId }, data: { revokedAt: new Date().toISOString() } });
   await request(strapi.server.httpServer).post('/api/auth/email-login/verify').send({ requestId: uuid(), browserSecret: value.body.browserSecret, proofId: value.result.proofId, code }).expect(400);

@@ -137,6 +137,11 @@ module.exports = ({ strapi }) => {
         if (Number(row.count) >= maximum) throw new AdmissionRejected('IDENTITY_RATE_LIMITED');
       }
     }
+    const latest = await trx(table('participation-request')).select('created_at').where({ rate_destination_key: destinationKey }).orderBy('created_at', 'desc').first();
+    if (latest) {
+      const remaining = new Date(latest.created_at).getTime() + 60000 - Date.now();
+      if (remaining > 0) throw new AdmissionRejected('IDENTITY_COOLDOWN', Math.ceil(remaining / 1000));
+    }
     return { destinationKey, browserKey: descriptor.browserKey, networkKey };
   }
   function receiptResult(row) {

@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { setupStrapi, cleanupStrapi } = require('./helpers/strapi');
 const createCrypto = require('../src/api/auth/join-identity-internal/proof-crypto');
+const elapsedDestination = require('./helpers/identity-time');
 
 const secret = () => crypto.randomBytes(32).toString('hex');
 const uuid = () => crypto.randomUUID();
@@ -15,7 +16,8 @@ let originalSend;
 const query = name => strapi.db.query('api::participation.' + name);
 const userQuery = () => strapi.db.query('plugin::users-permissions.user');
 
-async function pending({ rawValue = '  Person.' + uuid() + '@EXAMPLE.COM  ', actorId = null } = {}) {
+async function pendingAfterCooldown({ rawValue = '  Person.' + uuid() + '@EXAMPLE.COM  ', actorId = null } = {}) {
+  await elapsedDestination(strapi, tools, rawValue);
   const browserSecret = secret();
   const requestId = uuid();
   const intent = await query('join-intent').create({ data: {
@@ -63,7 +65,7 @@ afterAll(async () => {
 });
 
 test('fresh join proof creates a minimal verified account, mapping and automatic newsletter in one transaction', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const before = await userQuery().count();
   const result = await complete(item);
   expect(result).toMatchObject({ kind: 'account', created: true, newsletter: 'subscribed' });
@@ -81,7 +83,7 @@ test('fresh join proof creates a minimal verified account, mapping and automatic
 });
 
 test('only a proof freshly consumed in the exact owner transaction can resolve an account', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const proof = await query('contact-proof').findOne({ where: { receiptId: item.result.public.proofId } });
   await expect(owner.resolveFreshJoinAccount({}, { proofId: proof.id })).rejects.toMatchObject({ code: 'IDENTITY_TRANSACTION_REQUIRED' });
   await expect(owner.withTransaction(trx => owner.resolveFreshJoinAccount(trx, { proofId: proof.id }))).rejects.toMatchObject({ code: 'IDENTITY_FRESH_PROOF_REQUIRED' });
@@ -92,7 +94,7 @@ test('only a proof freshly consumed in the exact owner transaction can resolve a
 });
 
 test('concurrent completion consumes once and creates one account and one registry owner', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const before = await userQuery().count();
   const results = await Promise.all([complete(item), complete(item)]);
   expect(results.map(result => result.kind).sort()).toEqual(['account', 'invalid_proof']);
@@ -101,7 +103,7 @@ test('concurrent completion consumes once and creates one account and one regist
 });
 
 test('a final write failure rolls back the proof, account, mapping, intent and newsletter together', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const before = await userQuery().count();
   const newsletter = strapi.db.query('api::newsletter.newsletter-subscription');
   const preferences = strapi.db.query('api::newsletter.newsletter-preference-event');
@@ -120,7 +122,7 @@ test('a final write failure rolls back the proof, account, mapping, intent and n
 test('an exact legacy email requires its original signed-in actor and browser before binding', async () => {
   const email = 'Legacy.' + uuid() + '@example.com';
   const user = await legacy('\t' + email.replace('@example.com', '@EXAMPLE.COM') + ' ');
-  const item = await pending({ rawValue: '  ' + email + '  ' });
+  const item = await pendingAfterCooldown({ rawValue: '  ' + email + '  ' });
   const before = await userQuery().count();
   expect(await complete(item)).toEqual({ kind: 'sign_in_required' });
   expect(await userQuery().count()).toBe(before);
@@ -140,7 +142,7 @@ test.each(['duplicate', 'local_case', 'blocked'])('legacy collision or ineligibl
   if (kind === 'local_case') await legacy(email.toLowerCase());
   else await legacy(email, { blocked: kind === 'blocked' });
   if (kind === 'duplicate') await legacy(email.replace('@example.com', '@EXAMPLE.COM'));
-  const item = await pending({ rawValue: email });
+  const item = await pendingAfterCooldown({ rawValue: email });
   const before = await userQuery().count();
   let expected = 'IDENTITY_COLLISION';
   if (kind === 'blocked') expected = 'IDENTITY_ACCOUNT_UNAVAILABLE';
@@ -150,34 +152,34 @@ test.each(['duplicate', 'local_case', 'blocked'])('legacy collision or ineligibl
 });
 
 test('an authenticated bound actor cannot use a different account email to change actors', async () => {
-  const first = await complete(await pending());
-  const second = await complete(await pending());
+  const first = await complete(await pendingAfterCooldown());
+  const second = await complete(await pendingAfterCooldown());
   const user = await userQuery().findOne({ where: { id: first.userId } });
-  const item = await pending({ rawValue: user.email, actorId: second.userId });
+  const item = await pendingAfterCooldown({ rawValue: user.email, actorId: second.userId });
   await expect(complete(item)).rejects.toMatchObject({ code: 'IDENTITY_ACCOUNT_CHANGED' });
 });
 
 test('plus aliases and dots do not merge a new account into a legacy account', async () => {
   const local = 'Person.' + uuid();
   await legacy(local + '+garden@example.com');
-  const item = await pending({ rawValue: local + '@example.com' });
+  const item = await pendingAfterCooldown({ rawValue: local + '@example.com' });
   const result = await complete(item);
   expect(result.created).toBe(true);
 });
 
 test('a returning registry owner retains an explicit newsletter unsubscribe', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const account = await complete(item);
   const newsletter = strapi.service('api::newsletter.newsletter');
   await newsletter.setAccountPreference({ userId: account.userId, expectedRevision: 1, requestId: uuid(), preference: 'unsubscribed' });
   const before = await userQuery().count();
-  const returning = await complete(await pending({ rawValue: item.command.rawValue }));
+  const returning = await complete(await pendingAfterCooldown({ rawValue: item.command.rawValue }));
   expect(returning).toMatchObject({ kind: 'account', userId: account.userId, created: false, newsletter: 'unsubscribed' });
   expect(await userQuery().count()).toBe(before);
 });
 
 test('a fresh proof claim cannot be reused twice within its original transaction', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const before = await userQuery().count();
   await expect(complete(item, trx => owner.resolveFreshJoinAccount(trx, { proofId: item.result.delivery.proofId }))).rejects.toMatchObject({ code: 'IDENTITY_FRESH_PROOF_REQUIRED' });
   expect(await userQuery().count()).toBe(before);
@@ -185,9 +187,9 @@ test('a fresh proof claim cannot be reused twice within its original transaction
 });
 
 test('overlapping resolvers within one transaction admit the fresh claim exactly once', async () => {
-  const first = await pending();
+  const first = await pendingAfterCooldown();
   const account = await complete(first);
-  const returning = await pending({ rawValue: first.command.rawValue });
+  const returning = await pendingAfterCooldown({ rawValue: first.command.rawValue });
   const results = await owner.withTransaction(async trx => {
     const verified = await owner.consumeEmailProof(trx, returning.submission);
     expect(verified.kind).toBe('verified');
@@ -202,9 +204,9 @@ test('overlapping resolvers within one transaction admit the fresh claim exactly
 });
 
 test('a blocked registry owner cannot create a replacement account through a join proof', async () => {
-  const first = await pending();
+  const first = await pendingAfterCooldown();
   const account = await complete(first);
-  const item = await pending({ rawValue: first.command.rawValue });
+  const item = await pendingAfterCooldown({ rawValue: first.command.rawValue });
   await userQuery().update({ where: { id: account.userId }, data: { blocked: true } });
   const before = await userQuery().count();
   await expect(complete(item)).rejects.toMatchObject({ code: 'IDENTITY_ACCOUNT_UNAVAILABLE' });
@@ -213,7 +215,7 @@ test('a blocked registry owner cannot create a replacement account through a joi
 
 test('a bound signed-in actor may prove a new contact without replacing legacy credentials or creating another account', async () => {
   const user = await legacy('Original.' + uuid() + '@example.com');
-  const item = await pending({ actorId: user.id });
+  const item = await pendingAfterCooldown({ actorId: user.id });
   const before = await userQuery().count();
   expect(await complete(item)).toMatchObject({ kind: 'account', userId: user.id, created: false });
   expect(await userQuery().count()).toBe(before);
@@ -221,7 +223,7 @@ test('a bound signed-in actor may prove a new contact without replacing legacy c
 });
 
 test('automatic first enrollment preserves an existing destination complaint suppression', async () => {
-  const item = await pending();
+  const item = await pendingAfterCooldown();
   const proof = await query('contact-proof').findOne({ where: { id: item.result.delivery.proofId } });
   await strapi.service('api::newsletter.newsletter').suppressDestination({ derivationVersion: 1, destinationKey: proof.destinationKey, reason: 'complaint', sourceKey: uuid() });
   expect(await complete(item)).toMatchObject({ kind: 'account', created: true, newsletter: 'suppressed' });

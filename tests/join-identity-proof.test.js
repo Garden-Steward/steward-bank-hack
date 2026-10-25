@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { setupStrapi, cleanupStrapi } = require('./helpers/strapi');
 const createProofCrypto = require('../src/api/auth/join-identity-internal/proof-crypto');
+const elapsedDestination = require('./helpers/identity-time');
 
 const key = () => crypto.randomBytes(32).toString('hex');
 const requestId = () => crypto.randomUUID();
@@ -30,6 +31,7 @@ const savedProof = result => proofQuery().findOne({ where: { receiptId: result.p
 const code = entry => entry.text.match(/code is (\d{8})/)[1];
 const submission = (command, result, value) => ({ proofId: result.public.proofId, browserSecret: command.browserSecret, actorId: command.actorId, purpose: command.purpose, code: value });
 async function allowResend(result) {
+  await elapsedDestination(strapi, tools, (await savedProof(result)).rawValue);
   await strapi.db.connection(proofTable()).where({ receipt_id: result.public.proofId }).update({ expires_at: new Date(Date.now() + 10 * 60000 - 61000) });
 }
 function pending() {
@@ -103,6 +105,18 @@ test('admitted UUID replay is stable across object key order and rejects changed
   expect(await requestQuery().count({ where: { actorOrBrowserScope: 'identity:actor:' + command.actorId } })).toBe(1);
 });
 
+test('fresh UUID and cross-purpose requests share the destination send cooldown without adding records', async () => {
+  const command = await fixture();
+  const first = await issue(command);
+  const beforeProofs = await proofQuery().count();
+  const beforeRequests = await requestQuery().count();
+  expect(await issue({ ...command, requestId: requestId() })).toMatchObject({ kind: 'rejected', code: 'IDENTITY_COOLDOWN' });
+  expect(await issue({ ...command, actorId: undefined, purpose: 'email_login', requestId: requestId() })).toMatchObject({ kind: 'rejected', code: 'IDENTITY_COOLDOWN' });
+  expect(await issue(command)).toEqual(first);
+  expect(await proofQuery().count()).toBe(beforeProofs);
+  expect(await requestQuery().count()).toBe(beforeRequests);
+});
+
 test('cooldown rejection creates no receipt and a later resend supersedes the old generation', async () => {
   const command = await fixture();
   const first = await issue(command);
@@ -169,6 +183,7 @@ test('issuance cap rollback removes a provisional intent and records no rejected
   const command = await fixture();
   const admitted = [];
   for (let index = 0; index < 5; index++) {
+    if (index > 0) await elapsedDestination(strapi, tools, command.rawValue);
     const input = { ...command, requestId: requestId() };
     admitted.push({ input, result: await issue(input) });
   }
@@ -244,6 +259,7 @@ test('ambiguous provider failure is unknown and the claimed generation is never 
 test('expired pending payload cleanup is bounded and never dispatches mail', async () => {
   const command = await fixture();
   const first = await issue(command);
+  await elapsedDestination(strapi, tools, command.rawValue);
   const second = await issue({ ...command, requestId: requestId() });
   await strapi.db.connection(proofTable()).whereIn('receipt_id', [first.public.proofId, second.public.proofId]).update({ expires_at: new Date(Date.now() - 1000) });
   expect(await owner.clearExpiredProofPayloads({ limit: 1 })).toEqual({ cleared: 1 });
@@ -252,18 +268,19 @@ test('expired pending payload cleanup is bounded and never dispatches mail', asy
   expect(inbox).toEqual([]);
 });
 
-async function ownedEmail(command) {
+async function ownedEmailAfterCooldown(command) {
   const result = await issue(command);
   await owner.deliverEmailProof(result.delivery.requestReceiptId);
   const verified = await consume(submission(command, result, code(inbox[inbox.length - 1])));
   expect(verified.kind).toBe('verified');
   const mapping = await strapi.db.query('api::participation.verified-contact').create({ data: { channel: 'email', destinationKey: verified.proof.destinationKey, userId: command.actorId, proofId: verified.proof.id, verifiedAt: new Date().toISOString() } });
+  await elapsedDestination(strapi, tools, command.rawValue);
   return mapping;
 }
 
 test('known and unknown email login requests share a safe shape and neither creates an account', async () => {
   const profile = await fixture();
-  await ownedEmail(profile);
+  await ownedEmailAfterCooldown(profile);
   inbox = [];
   const before = await strapi.db.query('plugin::users-permissions.user').count();
   const knownCommand = { ...profile, purpose: 'email_login', actorId: undefined, browserSecret: key(), requestId: requestId() };
@@ -288,7 +305,7 @@ test('known and unknown email login requests share a safe shape and neither crea
 
 test('a revoked registry mapping cannot authorize email login after its code was delivered', async () => {
   const profile = await fixture();
-  const mapping = await ownedEmail(profile);
+  const mapping = await ownedEmailAfterCooldown(profile);
   const command = { ...profile, purpose: 'email_login', actorId: undefined, browserSecret: key(), requestId: requestId() };
   const result = await issue(command);
   await owner.deliverEmailProof(result.delivery.requestReceiptId);

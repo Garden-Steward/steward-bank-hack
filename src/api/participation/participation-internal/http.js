@@ -51,12 +51,13 @@ module.exports = ({ strapi }) => ({
         strapi.log.error('[participation] request failed');
         status = 500; code = 'INTERNAL_ERROR';
       }
-      if (status === 429) ctx.set('Retry-After', '60');
+      if (status === 429 || code === 'IDENTITY_COOLDOWN') ctx.set('Retry-After', '60');
       let message = 'We could not save this yet. Please try again.';
       if (status === 401) message = 'Please sign in again.';
       if (status === 404) message = 'Not found.';
       if (code === 'INVALID_PROOF') message = 'That code is invalid or has expired.';
       if (code === 'EVENT_UNAVAILABLE') message = 'This event is no longer open for joining.';
+      if (code === 'IDENTITY_COOLDOWN') message = 'Please wait a minute before requesting another code.';
       ctx.status = status;
       ctx.body = { error: { code, message, fieldErrors: error.fieldErrors || {} } };
     }
