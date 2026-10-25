@@ -2,6 +2,7 @@
 
 const Helper = require('./helpers/cron-helper.js');
 const Weather = require('./helpers/weather.js');
+const { isDueOn } = require('../src/utils/repeat-schedule');
 
 module.exports = {
   weatherUpdate: {
@@ -20,6 +21,9 @@ module.exports = {
       for (const recTask of recurringTasks) {
         try {
           await Helper.setWeeklySchedule(recTask);
+
+          // Only make a task on the days it repeats (e.g. Tue/Wed/Thu watering).
+          if (!isDueOn(recTask)) continue;
 
           const curTask = await strapi.service('api::garden-task.garden-task').getTaskByRecurringUndone(recTask);
 

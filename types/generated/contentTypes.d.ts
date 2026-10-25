@@ -691,6 +691,7 @@ export interface ApiGardenGarden extends Struct.CollectionTypeSchema {
       'manyToOne',
       'api::organization.organization'
     >;
+    plots: Schema.Attribute.Component<'garden.plot', true>;
     projects: Schema.Attribute.Relation<'oneToMany', 'api::project.project'>;
     publishedAt: Schema.Attribute.DateTime;
     recurring_event_templates: Schema.Attribute.Relation<
@@ -1268,6 +1269,11 @@ export interface ApiRecurringTaskRecurringTask
       'images' | 'files' | 'videos' | 'audios'
     >;
     publishedAt: Schema.Attribute.DateTime;
+    repeat_days: Schema.Attribute.JSON;
+    repeat_frequency: Schema.Attribute.Enumeration<
+      ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly']
+    >;
+    repeat_start: Schema.Attribute.Date;
     scheduler_type: Schema.Attribute.Enumeration<
       ['No Schedule', 'Daily Primary', 'Weekly Shuffle']
     > &

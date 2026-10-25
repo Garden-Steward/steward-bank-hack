@@ -48,6 +48,8 @@ const MEMBER_ACTIONS = [
   'api::garden.garden.membership',
   'api::garden.garden.setMute',
   'api::garden.garden.leave',
+  // Manager-only in the controller; granted role-wide so a manager needs no admin-panel setup.
+  'api::garden.garden.replacePlots',
   'api::organization.organization.usageList',
   'api::organization.organization.usageReport',
 ];

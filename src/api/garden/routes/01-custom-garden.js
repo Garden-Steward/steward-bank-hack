@@ -36,6 +36,19 @@ module.exports = {
       path: '/gardens/:slug/standing-tasks',
       handler: 'garden.replaceStandingTasks',
     },
+    { // The beds on this garden's Explore island. Public like the island
+      // itself: each plot carries only a label and its plant.
+      method: 'GET',
+      path: '/gardens/:slug/plots',
+      handler: 'garden.getPlots',
+      config: { auth: false },
+    },
+    { // Replace this garden's plots. As with standing-tasks, the manager check
+      // is in the controller; this route only gets a logged-in request that far.
+      method: 'PUT',
+      path: '/gardens/:slug/plots',
+      handler: 'garden.replacePlots',
+    },
     { // The signed-in user's standing with this garden, and the member menu's
       // two actions. Each checks the caller in the controller.
       method: 'GET',

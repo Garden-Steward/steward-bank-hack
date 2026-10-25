@@ -57,6 +57,7 @@ require('./event/brief');
 require('./event/cancel');
 require('./garden/full-pii');
 require('./garden/membership');
+require('./garden/plots');
 require('./auth/sms-login');
 require('./project-alert');
 require('./billing');

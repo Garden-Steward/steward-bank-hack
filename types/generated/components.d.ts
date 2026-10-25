@@ -66,6 +66,21 @@ export interface EventsBringItem extends Struct.ComponentSchema {
   };
 }
 
+export interface GardenPlot extends Struct.ComponentSchema {
+  collectionName: 'components_garden_plots';
+  info: {
+    description: "One bed on the garden's Explore island, growing one plant";
+    displayName: 'Plot';
+  };
+  attributes: {
+    label: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 60;
+      }>;
+    plant: Schema.Attribute.Relation<'oneToOne', 'api::plant.plant'>;
+  };
+}
+
 export interface GardenVisitInfo extends Struct.ComponentSchema {
   collectionName: 'components_garden_visit_infos';
   info: {
@@ -192,6 +207,7 @@ declare module '@strapi/strapi' {
       'events.agenda-item': EventsAgendaItem;
       'events.brief': EventsBrief;
       'events.bring-item': EventsBringItem;
+      'garden.plot': GardenPlot;
       'garden.visit-info': GardenVisitInfo;
       'plants.benefits': PlantsBenefits;
       'plants.planting': PlantsPlanting;
