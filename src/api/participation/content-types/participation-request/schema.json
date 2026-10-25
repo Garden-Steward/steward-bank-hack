@@ -65,6 +65,21 @@
       "column": {
         "notNullable": true
       }
+    },
+    "rateDestinationKey": {
+      "type": "string",
+      "private": true,
+      "maxLength": 64
+    },
+    "rateBrowserKey": {
+      "type": "string",
+      "private": true,
+      "maxLength": 64
+    },
+    "rateNetworkKey": {
+      "type": "string",
+      "private": true,
+      "maxLength": 64
     }
   },
   "indexes": [
@@ -76,6 +91,27 @@
         "request_id"
       ],
       "type": "unique"
+    },
+    {
+      "name": "gs_participation_proof_destination_rate_idx",
+      "columns": [
+        "rate_destination_key",
+        "created_at"
+      ]
+    },
+    {
+      "name": "gs_participation_proof_browser_rate_idx",
+      "columns": [
+        "rate_browser_key",
+        "created_at"
+      ]
+    },
+    {
+      "name": "gs_participation_proof_network_rate_idx",
+      "columns": [
+        "rate_network_key",
+        "created_at"
+      ]
     }
   ]
 }

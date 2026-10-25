@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { isIP } = require('node:net');
 const PURPOSES = new Set(['join_identity', 'email_login', 'profile_email', 'profile_phone']);
 const hex = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const codeValue = value => typeof value === 'string' && /^\d{8}$/.test(value);
@@ -21,6 +22,8 @@ module.exports = function createProofCrypto(masterHex) {
   const browserSecret = derive('browser');
   const codeSecret = derive('code');
   const payloadSecret = derive('payload');
+  const networkSecret = derive('network');
+  const requestSecret = derive('request');
   const hmac = (secret, value) => crypto.createHmac('sha256', secret).update(value).digest('hex');
   function codeHash(proof, code) {
     if (!codeValue(code)) throw invalid();
@@ -34,6 +37,14 @@ module.exports = function createProofCrypto(masterHex) {
     browserHash(value) {
       if (!hex(value)) throw invalid();
       return hmac(browserSecret, value);
+    },
+    networkHash(address) {
+      if (typeof address !== 'string' || !isIP(address)) throw invalid();
+      return hmac(networkSecret, address);
+    },
+    requestHash(canonicalInput) {
+      if (typeof canonicalInput !== 'string' || !canonicalInput.length || canonicalInput.length > 32768) throw invalid();
+      return hmac(requestSecret, canonicalInput);
     },
     generateCode() {
       return String(crypto.randomInt(0, 100000000)).padStart(8, '0');

@@ -83,3 +83,23 @@ test('tampered ciphertext, IV, tag, format and key all fail with one generic err
   for (const value of ['', 'v2.' + payload.slice(3), payload + '.extra', 'a'.repeat(4097), null]) expect(() => tools.open(item, value)).toThrow('Invalid proof material');
   expect(() => createProofCrypto(key()).open(item, payload)).toThrow('Invalid proof material');
 });
+
+test('network scope accepts only actual socket address values and stays domain-separated', () => {
+  const master = key();
+  const tools = createProofCrypto(master);
+  expect(tools.networkHash('127.0.0.1')).toBe(createProofCrypto(master).networkHash('127.0.0.1'));
+  expect(tools.networkHash('127.0.0.1')).not.toBe(tools.networkHash('::1'));
+  expect(tools.networkHash('127.0.0.1')).not.toBe(tools.destinationKey('email', '127.0.0.1'));
+  expect(tools.networkHash('127.0.0.1')).not.toBe(tools.requestHash('127.0.0.1'));
+  for (const value of ['127.0.0.1, 1.2.3.4', 'for=1.2.3.4', 'localhost', null, 123]) expect(() => tools.networkHash(value)).toThrow('Invalid proof material');
+});
+
+test('request digests bind exact input and use a separate purpose key', () => {
+  const tools = createProofCrypto(key());
+  const first = '{"operation":"join","emailRaw":" Synthetic@Example.com "}';
+  expect(tools.requestHash(first)).toBe(tools.requestHash(first));
+  expect(tools.requestHash(first)).not.toBe(tools.requestHash(first.replace('join', 'login')));
+  expect(tools.requestHash(first)).not.toBe(tools.requestHash(first.replace(' Synthetic@Example.com ', 'Synthetic@Example.com')));
+  expect(tools.requestHash(first)).not.toBe(tools.destinationKey('email', first));
+  for (const value of ['', 'a'.repeat(32769), null, {}]) expect(() => tools.requestHash(value)).toThrow('Invalid proof material');
+});
