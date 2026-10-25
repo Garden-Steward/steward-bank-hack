@@ -1,0 +1,84 @@
+{
+  "kind": "collectionType",
+  "collectionName": "gs_newsletter_suppressions",
+  "info": {
+    "singularName": "newsletter-suppression",
+    "pluralName": "newsletter-suppressions",
+    "displayName": "Newsletter Suppression"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "destinationKey": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "maxLength": 64
+    },
+    "derivationVersion": {
+      "type": "integer",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "min": 1,
+      "default": 1
+    },
+    "reason": {
+      "type": "enumeration",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      },
+      "enum": [
+        "user_unsubscribe",
+        "hard_bounce",
+        "complaint",
+        "manual"
+      ]
+    },
+    "sourceKey": {
+      "type": "string",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true,
+        "unique": true
+      },
+      "unique": true,
+      "maxLength": 160
+    },
+    "recordedAt": {
+      "type": "datetime",
+      "private": true,
+      "required": true,
+      "column": {
+        "notNullable": true
+      }
+    }
+  },
+  "indexes": [
+    {
+      "name": "gs_newsletter_suppression_destination_unique",
+      "columns": [
+        "derivation_version",
+        "destination_key"
+      ],
+      "type": "unique"
+    }
+  ]
+}

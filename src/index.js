@@ -179,6 +179,8 @@ module.exports = {
       strapi.log.error('[bootstrap] volunteer-day draft backfill failed:', err);
     }
 
+    await strapi.service('api::participation.participation').ensureStorage();
+
     // Ledger indexes (CREATE INDEX IF NOT EXISTS). Never blocks boot.
     try {
       await strapi.service('api::billing.usage').ensureIndexes();
