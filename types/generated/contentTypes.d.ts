@@ -2162,6 +2162,7 @@ export interface PluginUsersPermissionsUser
   attributes: {
     activeGarden: Schema.Attribute.Relation<'oneToOne', 'api::garden.garden'>;
     automated_emails_sent: Schema.Attribute.JSON;
+    availability: Schema.Attribute.JSON;
     bio: Schema.Attribute.Text;
     blocked: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     chatId: Schema.Attribute.BigInteger;
@@ -2196,14 +2197,31 @@ export interface PluginUsersPermissionsUser
       Schema.Attribute.Private;
     email_verification_token: Schema.Attribute.String &
       Schema.Attribute.Private;
+    emailConsent: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    employer: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 120;
+      }>;
     firstName: Schema.Attribute.String;
+    frequency: Schema.Attribute.Enumeration<
+      ['weekly', 'monthly', 'occasionally']
+    >;
     gardens: Schema.Attribute.Relation<'manyToMany', 'api::garden.garden'>;
+    goals: Schema.Attribute.Text;
     instructions: Schema.Attribute.Relation<
       'oneToMany',
       'api::instruction.instruction'
     >;
+    jobTitle: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 120;
+      }>;
     last_vacation_check_sent: Schema.Attribute.DateTime;
     lastName: Schema.Attribute.String;
+    linkedinUrl: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 300;
+      }>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -2211,6 +2229,7 @@ export interface PluginUsersPermissionsUser
     > &
       Schema.Attribute.Private;
     muted_gardens: Schema.Attribute.JSON;
+    onboardingCompletedAt: Schema.Attribute.DateTime;
     password: Schema.Attribute.Password &
       Schema.Attribute.Private &
       Schema.Attribute.SetMinMaxLength<{
@@ -2229,6 +2248,7 @@ export interface PluginUsersPermissionsUser
       'manyToOne',
       'plugin::users-permissions.role'
     >;
+    skills: Schema.Attribute.JSON;
     sms_login_attempts: Schema.Attribute.Integer &
       Schema.Attribute.Private &
       Schema.Attribute.DefaultTo<0>;
@@ -2238,6 +2258,8 @@ export interface PluginUsersPermissionsUser
     sms_login_last_sent: Schema.Attribute.DateTime & Schema.Attribute.Private;
     sms_login_send_log: Schema.Attribute.JSON & Schema.Attribute.Private;
     sms_opted_out_at: Schema.Attribute.DateTime;
+    smsConsent: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    smsConsentAt: Schema.Attribute.DateTime;
     status: Schema.Attribute.Enumeration<
       ['INTERESTED', 'VOLUNTEER', 'PROFESSIONAL', 'INACTIVE']
     >;
@@ -2256,6 +2278,7 @@ export interface PluginUsersPermissionsUser
       }>;
     vacation_reminder_count: Schema.Attribute.Integer &
       Schema.Attribute.DefaultTo<0>;
+    volunteerBenefits: Schema.Attribute.JSON;
   };
 }
 
